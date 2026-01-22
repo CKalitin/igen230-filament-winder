@@ -1,3 +1,4 @@
-#include <Arduino.h>
+#pragma once
 
-#include <motor_control.h>
+#include <Arduino.h>
+#include "motor_control.h"
