@@ -1,38 +1,59 @@
-#include <main.h>
+/// @file main.cpp
+/// @brief Filament-winder firmware entry point.
+///
+/// Initialises hardware, then runs the winding state machine every loop().
+/// A minimal serial command interface is provided for testing — replace with
+/// full UI/comms integration as needed.
 
-#define LIMIT_SWITCH_PIN 5
-
-int carriage_dir = 1;
-
-int blinks = 0;
+#include "main.h"
 
 void setup() {
-	pinMode(2, OUTPUT); // LED pin
-  pinMode(LIMIT_SWITCH_PIN, INPUT_PULLUP);
+    Serial.begin(115200);
 
-	initSteppers();
+    initSteppers();
+    Winding::init();
 
-  carriageStepper.setSpeed(CARRIAGE_MOTOR_PARAMS.microStepsPerRev * 0.5 * carriage_dir);
-  mandrelStepper.setSpeed(MANDREL_MOTOR_PARAMS.microStepsPerRev * 0.5 * carriage_dir);
+    Winding::start();
+
+    Serial.println(F("=== Filament Winder Ready ==="));
+    Serial.println(F("Commands: profile, start, pause, resume, status"));
 }
 
 void loop() {
-  carriageStepper.runSpeed();
-  mandrelStepper.runSpeed();
+    Winding::update();
 
-  if (digitalRead(LIMIT_SWITCH_PIN) == HIGH && false==true) {
-    carriage_dir = -carriage_dir;
-    carriageStepper.setSpeed(CARRIAGE_MOTOR_PARAMS.microStepsPerRev * 0.5 * carriage_dir);
-    mandrelStepper.setSpeed(MANDREL_MOTOR_PARAMS.microStepsPerRev * 0.5 * carriage_dir);
+    // ── Minimal serial command interface (placeholder for full UI) ───────────
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
 
-    // sleep 0.5s
-    delay(500);
-    // toggle LED
-    digitalWrite(2, !digitalRead(2));
-  }
+        if (cmd == "start") {
+            Winding::start();
 
-  if (blinks * 500 < millis()) {
-    blinks++;
-    digitalWrite(2, !digitalRead(2));
-  }
+        } else if (cmd == "pause") {
+            Winding::pause();
+
+        } else if (cmd == "resume") {
+            Winding::resume();
+
+        } else if (cmd == "status") {
+            const char* names[] = {
+                "IDLE", "PAUSED", "ZEROING", "WINDING", "DWELLING", "COMPLETE"
+            };
+            Serial.print(F("State: "));
+            Serial.print(names[static_cast<int>(Winding::getState())]);
+            Serial.print(F("  Layer: "));
+            Serial.print(Winding::getActiveLayerIndex());
+            Serial.print(F("/"));
+            Serial.println(Winding::getProfile().layerCount);
+
+        } else if (cmd == "profile") {
+            // Load a test profile — replace with real UI data in production.
+            WindProfile& p = Winding::getProfile();
+            p.clear();
+            p.mandrelDiameter = 50.0f;                           // 50 mm mandrel
+            p.addLayer(200.0f, 45.0f, 0.0f, 4.0f, 10.0f);       // Layer 0
+            Serial.println(F("Test profile loaded (50 mm dia, 1 layer @ 45 deg)."));
+        }
+    }
 }
