@@ -22,10 +22,12 @@ struct StepperMotorParams {
 	}
 };
 
+// step dir enable
 // 25 26 27
 // 14 17 13
 
 // Default parameters per motor
+// step, dir, enable
 const StepperMotorParams MANDREL_MOTOR_PARAMS(25, 26, 27, 200, 8); // TMCS2209 (8 microsteps default)
 const StepperMotorParams CARRIAGE_MOTOR_PARAMS(14, 17, 13, 200, 4); // TMC2225 (4 microsteps default)
 
