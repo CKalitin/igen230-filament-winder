@@ -1,4 +1,4 @@
-26428040112409457
+26435131372276953
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -105602,6 +105602,13 @@ Varistor VF
 2
 2
 control_board_pcb
+DSN-VC228_Pin-Holes
+
+
+0
+5
+5
+control_board_pcb
 ESP32_Devkit_V1_DOIT_JWM_LessSilk
 ESPWROOM32, ESP32, 30 GPIOs version
 
@@ -105609,14 +105616,35 @@ ESPWROOM32, ESP32, 30 GPIOs version
 30
 30
 control_board_pcb
+HU-M28
+
+
+0
+12
+8
+control_board_pcb
 MT3608_Boost_Converter
 
 
 0
 4
-1
+4
 control_board_pcb
 Untitled
+
+
+0
+0
+0
+control_board_pcb
+Untitled_1
+
+
+0
+0
+0
+control_board_pcb
+Untitled_2
 
 
 0
