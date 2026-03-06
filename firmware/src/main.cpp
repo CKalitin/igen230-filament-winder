@@ -9,6 +9,7 @@
 
 static unsigned long lastLedToggle = 0;
 static bool ledState = false;
+static bool maxSpeedMode = true;
 
 void setup() {
     Serial.begin(115200);
@@ -21,11 +22,15 @@ void setup() {
     Winding::start();
 
     Serial.println(F("=== Filament Winder Ready ==="));
-    Serial.println(F("Commands: profile, start, pause, resume, status"));
+    Serial.println(F("Commands: profile, start, pause, resume, status, maxspeed, stop"));
 }
 
 void loop() {
-    Winding::update();
+    if (maxSpeedMode) {
+        runMotorsMaxSpeed();
+    } else {
+        Winding::update();
+    }
 
     // ── Non-blocking LED blink ────────────────────────────────────────────
     unsigned long now = millis();
@@ -59,6 +64,16 @@ void loop() {
             Serial.print(Winding::getActiveLayerIndex());
             Serial.print(F("/"));
             Serial.println(Winding::getProfile().layerCount);
+
+        } else if (cmd == "maxspeed") {
+            maxSpeedMode = true;
+            Serial.println(F("Max speed mode ON"));
+
+        } else if (cmd == "stop") {
+            maxSpeedMode = false;
+            mandrelStepper.setSpeed(0);
+            carriageStepper.setSpeed(0);
+            Serial.println(F("Motors stopped"));
 
         } else if (cmd == "profile") {
             // Load a test profile — replace with real UI data in production.

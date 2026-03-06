@@ -24,3 +24,10 @@ void initSteppers() {
     mandrelStepper.setSpeed(MANDREL_MOTOR_PARAMS.microStepsPerRev * 2);
     carriageStepper.setSpeed(CARRIAGE_MOTOR_PARAMS.microStepsPerRev * 2);
 }
+
+void runMotorsMaxSpeed() {
+    mandrelStepper.setSpeed(MANDREL_MOTOR_PARAMS.microStepsPerRev * 2);
+    carriageStepper.setSpeed(CARRIAGE_MOTOR_PARAMS.microStepsPerRev * 2);
+    mandrelStepper.runSpeed();
+    carriageStepper.runSpeed();
+}

@@ -26,10 +26,24 @@ struct StepperMotorParams {
 // 25 26 27
 // 14 17 13
 
+// step dir enable
+
+// 1
+// D16 D17 D5
+
+// 2
+// D18 D19 D21
+
+// 3
+// D26 D25 D33
+
+// 4
+// D32 D35 D34
+
 // Default parameters per motor
 // step, dir, enable
 const StepperMotorParams MANDREL_MOTOR_PARAMS(14, 17, 13, 200, 8); // TMCS2209 (8 microsteps default)
-const StepperMotorParams CARRIAGE_MOTOR_PARAMS(25, 26, 27, 200, 4); // TMC2225 (4 microsteps default)
+const StepperMotorParams CARRIAGE_MOTOR_PARAMS(25, 26, 27, 200, 8); // TMC2225 (4 microsteps default)
 
 // Global stepper objects (defined in motor_control.cpp)
 extern AccelStepper mandrelStepper;
@@ -37,3 +51,6 @@ extern AccelStepper carriageStepper;
 
 // Initialize stepper instances with the configured pins/params
 void initSteppers();
+
+// Run both motors at max speed (call every loop iteration while active)
+void runMotorsMaxSpeed();
