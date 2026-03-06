@@ -28,8 +28,8 @@ struct StepperMotorParams {
 
 // Default parameters per motor
 // step, dir, enable
-const StepperMotorParams MANDREL_MOTOR_PARAMS(25, 26, 27, 200, 8); // TMCS2209 (8 microsteps default)
-const StepperMotorParams CARRIAGE_MOTOR_PARAMS(14, 17, 13, 200, 4); // TMC2225 (4 microsteps default)
+const StepperMotorParams MANDREL_MOTOR_PARAMS(14, 17, 13, 200, 8); // TMCS2209 (8 microsteps default)
+const StepperMotorParams CARRIAGE_MOTOR_PARAMS(25, 26, 27, 200, 4); // TMC2225 (4 microsteps default)
 
 // Global stepper objects (defined in motor_control.cpp)
 extern AccelStepper mandrelStepper;

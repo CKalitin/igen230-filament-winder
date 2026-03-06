@@ -15,6 +15,12 @@
 /// Carriage home / limit switch (active LOW with internal pull-up).
 constexpr uint8_t CARRIAGE_LIMIT_PIN = 16;
 
+/// Built-in LED pin (GPIO 2 on most ESP32 dev boards).
+constexpr uint8_t LED_PIN = 2;
+
+/// LED blink interval in milliseconds.
+constexpr unsigned long LED_BLINK_INTERVAL_MS = 500;
+
 // ============================================================================
 //  Drive-Train Mechanical Constants
 // ============================================================================

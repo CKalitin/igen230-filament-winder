@@ -7,8 +7,13 @@
 
 #include "main.h"
 
+static unsigned long lastLedToggle = 0;
+static bool ledState = false;
+
 void setup() {
     Serial.begin(115200);
+
+    pinMode(LED_PIN, OUTPUT);
 
     initSteppers();
     Winding::init();
@@ -21,6 +26,14 @@ void setup() {
 
 void loop() {
     Winding::update();
+
+    // ── Non-blocking LED blink ────────────────────────────────────────────
+    unsigned long now = millis();
+    if (now - lastLedToggle >= LED_BLINK_INTERVAL_MS) {
+        lastLedToggle = now;
+        ledState = !ledState;
+        digitalWrite(LED_PIN, ledState);
+    }
 
     // ── Minimal serial command interface (placeholder for full UI) ───────────
     if (Serial.available()) {
