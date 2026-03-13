@@ -133,8 +133,13 @@ AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  //sam
 void setup() {
     Serial.begin(115200); // Always good for debugging
 
-    // 1. Initialize the limit switch
+    // 1. Initialize Motors
+    pinMode(MANDREL_EN, OUTPUT);
+    pinMode(CARRIAGE_EN, OUTPUT);
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
+
+    digitalWrite(MANDREL_EN, HIGH);
+    digitalWrite(CARRIAGE_EN, HIGH);
 
     // Set speeds and accelerations
     mandrel.setMaxSpeed(1000);
