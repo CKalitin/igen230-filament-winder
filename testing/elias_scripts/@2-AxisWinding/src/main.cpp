@@ -83,7 +83,7 @@ class Layer{
 
 // Array of pointers to store the data for each layer from the UI
 const int maxLayers = 5;    // Maximum layers the machine can handle (subject to change)
-int totalLayers = 1;        // Number of layers recieved from the UI
+int totalLayers = 0;        // Number of layers recieved from the UI
 int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects (chat gave me this idk how pointers work)
 
@@ -138,8 +138,8 @@ void setup() {
     pinMode(CARRIAGE_EN, OUTPUT);
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
 
-    digitalWrite(MANDREL_EN, HIGH);
-    digitalWrite(CARRIAGE_EN, HIGH);
+    digitalWrite(MANDREL_EN, LOW);
+    digitalWrite(CARRIAGE_EN, LOW);
 
     // Set speeds and accelerations
     mandrel.setMaxSpeed(1000);
