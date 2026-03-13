@@ -173,21 +173,20 @@ void loop() {
             carriage.setSpeed(-400); // Slowly move to limit switch
             carriage.runSpeed();
 
-            if (digitalRead(CARRIAGE_LIMIT) == LOW) {           // Check if limit switch is active
+            if (digitalRead(CARRIAGE_LIMIT) == HIGH) {           // Check if limit switch is active
                 carriage.stop();                                // Stop motion
                 carriage.setCurrentPosition(0);                 // Update carriage position to zero
                 lastManStep = mandrel.currentPosition();        // Update mandrel postion to zero
                 currentState = MOVING;                          // Initialize next state
                 Serial.println("Zeroing Complete. Winding..."); // Print zeroing confirmation to screen
             }
-            break;  // Exit Zeroing state
+            else break;  // Exit Zeroing state
         }
 
         case MOVING: {
             Serial.println("STATE = MOVING");
 
             mandrel.setSpeed(600);
-            carriage.setSpeed(-400);
             
             // 1. Getneeded information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
