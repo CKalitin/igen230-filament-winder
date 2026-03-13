@@ -12,12 +12,12 @@
 class Layer{
     // Information not accessible outside the Layer class
     private:
-        float _length = 200;   // Length of the layer (mm)
-        float _angle = 45;     // Fibre angle for the layer (degrees)
-        float _offset = 0;     // Where the first pass starts on mandrel (mm)
-        float _stepover = 2;   // Distance moved per pass (to control fibre overlap in each layer) (mm)
-        float _dwell = 180;    // Extra mandrel rotation at the end of each pass (degrees)
-        float _diameter = 55;  // Mandrel diameter (mm)
+        float _length;         // Length of the layer (mm)
+        float _angle;          // Fibre angle for the layer (degrees)
+        float _offset;         // Where the first pass starts on mandrel (mm)
+        float _stepover;       // Distance moved per pass (to control fibre overlap in each layer) (mm)
+        float _dwell;          // Extra mandrel rotation at the end of each pass (degrees)
+        float _diameter;       // Mandrel diameter (mm)
         int   _pass;           // Number of passes to complete (a pass is from left to right, not there and back)
         int   _passDone;       // Number of passes Completed
         bool  _goForward;      // Track direction of motion
@@ -81,7 +81,7 @@ class Layer{
 
 // Array of pointers to store the data for each layer from the UI
 const int maxLayers = 5;    // Maximum layers the machine can handle (subject to change)
-int totalLayers = 0;        // Number of layers recieved from the UI
+int totalLayers = 1;        // Number of layers recieved from the UI
 int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects (chat gave me this idk how pointers work)
 
@@ -129,11 +129,26 @@ AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     //cre
 AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  //same as above but for the carriage
 
 void setup() {
+    Serial.begin(115200); // Always good for debugging
+
+    // 1. Initialize the limit switch
+    pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
+
     // Set speeds and accelerations
     mandrel.setMaxSpeed(1000);
     mandrel.setSpeed(600);
     carriage.setMaxSpeed(3000);
     carriage.setAcceleration(5000);
+
+    // 3. MANUALLY ADD A TEST LAYER (since UI isn't connected yet)
+    // Params: length, angle, offset, stepover, dwell, diameter
+    LayerFromUI(100.0, 45.0, 0.0, 2.0, 180.0, 55.0);
+    
+    // 4. SET MAN D (Your global variable used in math)
+    manD = 55.0;
+
+    // 5. FORCE STATE TO ZEROING
+    currentState = ZEROING;
 }
 
 void loop() {
