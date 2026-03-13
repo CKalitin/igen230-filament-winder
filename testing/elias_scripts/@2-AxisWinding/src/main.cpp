@@ -4,9 +4,11 @@
 // Pin definitions
 #define MANDREL_STEP 26
 #define MANDREL_DIR  25
+#define MANDREL_EN   27
 
 #define CARRIAGE_STEP 12
 #define CARRIAGE_DIR  14
+#define CARRIAGE_EN   13
 #define CARRIAGE_LIMIT 22 // Carriage limit switch
 
 class Layer{
