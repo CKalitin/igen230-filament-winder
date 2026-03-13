@@ -149,7 +149,7 @@ void setup() {
 
     // 5. FORCE STATE TO ZEROING
     currentState = ZEROING;
-    Serial.print("STATE = ZEROING");
+    Serial.println("STATE = ZEROING");
 }
 
 void loop() {
@@ -162,13 +162,13 @@ void loop() {
     switch (currentState) {
 
         case PAUSED: { 
-            Serial.print("STATE = PAUSED"); 
+            Serial.println("STATE = PAUSED"); 
 
             break;  // Motors held in position, waiting for UI command to start or zero
         }
 
         case ZEROING: {
-            Serial.print("STATE = ZEROING");
+            Serial.println("STATE = ZEROING");
 
             carriage.setSpeed(-400); // Slowly move to limit switch
             carriage.runSpeed();
@@ -184,8 +184,11 @@ void loop() {
         }
 
         case MOVING: {
-            Serial.print("STATE = MOVING");
+            Serial.println("STATE = MOVING");
 
+            mandrel.setSpeed(600);
+            carriage.setSpeed(-400);
+            
             // 1. Getneeded information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
             float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
@@ -193,7 +196,7 @@ void loop() {
             // 2. Electronic Gearing (Sync carriage to mandrel)
             mandrel.runSpeed();                         // Rotate mandrel at prior defined constant speed
             long stepNow = mandrel.currentPosition();   // Store the mandrels current position through step count
-
+            
             if (stepNow != lastManStep) {           // Check if a step is due
                 long delta = stepNow - lastManStep; // Number of steps mandrel moved since last check
                 lastManStep = stepNow;              // Update the previous step
@@ -211,6 +214,7 @@ void loop() {
 
             // 3. Check for End of Pass
             float currentPosMM = carriage.currentPosition() / stepsPerMM;   // Convert position in steps to mm
+            Serial.println(currentPosMM);
 
             // Enter Dwell state if the carriage has reached the end of a pass
             if (activeLayer->isGoingForward() && currentPosMM >= target) currentState = DWELLING;  
@@ -228,7 +232,7 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            Serial.print("STATE = DWELLING");
+            Serial.println("STATE = DWELLING");
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -247,7 +251,7 @@ void loop() {
         }
 
         case FINISHED: {
-            Serial.print("STATE = FINISHED");
+            Serial.println("STATE = FINISHED");
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
