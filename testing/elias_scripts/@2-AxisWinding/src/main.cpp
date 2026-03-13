@@ -2,13 +2,11 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Pin definitions
-#define MANDREL_STEP 26
-#define MANDREL_DIR  25
-#define MANDREL_EN   27
+#define MANDREL_STEP 25
+#define MANDREL_DIR  26
+#define CARRIAGE_STEP 14
+#define CARRIAGE_DIR  18
 
-#define CARRIAGE_STEP 12
-#define CARRIAGE_DIR  14
-#define CARRIAGE_EN   13
 #define CARRIAGE_LIMIT 22 // Carriage limit switch
 
 class Layer{
@@ -131,15 +129,10 @@ AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     //cre
 AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  //same as above but for the carriage
 
 void setup() {
-    Serial.begin(115200); // Always good for debugging
+    Serial.begin(115200);
 
-    // 1. Initialize Motors
-    pinMode(MANDREL_EN, OUTPUT);
-    pinMode(CARRIAGE_EN, OUTPUT);
+    // Initialize Motors
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
-
-    digitalWrite(MANDREL_EN, LOW);
-    digitalWrite(CARRIAGE_EN, LOW);
 
     // Set speeds and accelerations
     mandrel.setMaxSpeed(1000);
@@ -147,15 +140,16 @@ void setup() {
     carriage.setMaxSpeed(3000);
     carriage.setAcceleration(5000);
 
-    // 3. MANUALLY ADD A TEST LAYER (since UI isn't connected yet)
+    // MANUALLY ADD A TEST LAYER (since UI isn't connected yet)
     // Params: length, angle, offset, stepover, dwell, diameter
     LayerFromUI(100.0, 45.0, 0.0, 2.0, 180.0, 55.0);
     
-    // 4. SET MAN D (Your global variable used in math)
+    // SET MAN D (Your global variable used in math)
     manD = 55.0;
 
     // 5. FORCE STATE TO ZEROING
     currentState = ZEROING;
+    Serial.print("STATE = ZEROING");
 }
 
 void loop() {
@@ -167,11 +161,15 @@ void loop() {
 
     switch (currentState) {
 
-        case PAUSED: {  
+        case PAUSED: { 
+            Serial.print("STATE = PAUSED"); 
+
             break;  // Motors held in position, waiting for UI command to start or zero
         }
 
         case ZEROING: {
+            Serial.print("STATE = ZEROING");
+
             carriage.setSpeed(-400); // Slowly move to limit switch
             carriage.runSpeed();
 
@@ -186,6 +184,8 @@ void loop() {
         }
 
         case MOVING: {
+            Serial.print("STATE = MOVING");
+
             // 1. Getneeded information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
             float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
@@ -228,6 +228,7 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
+            Serial.print("STATE = DWELLING");
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -246,6 +247,7 @@ void loop() {
         }
 
         case FINISHED: {
+            Serial.print("STATE = FINISHED");
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
