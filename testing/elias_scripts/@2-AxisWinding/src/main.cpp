@@ -2,10 +2,13 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Pin definitions
-#define MANDREL_STEP 25
-#define MANDREL_DIR  26
+#define MANDREL_STEP  26
+#define MANDREL_DIR   25
 #define CARRIAGE_STEP 14
-#define CARRIAGE_DIR  18
+#define CARRIAGE_DIR  12
+
+#define MANDREL_EN    27
+#define CARRIAGE_EN   33
 
 #define CARRIAGE_LIMIT 22 // Carriage limit switch
 
@@ -128,15 +131,33 @@ long dwellTargetStep;   // Number of extra steps mandrel must move at end of a p
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     //creates object called mandrel to store current step position, target position, speed, timing
 AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  //same as above but for the carriage
 
+void test() {
+        // runSpeed() does not use acceleration or targets. 
+        // It just pulses the pin at the speed defined by setSpeed().
+        mandrel.runSpeed();
+        carriage.runSpeed();
+    }
+
 void setup() {
     Serial.begin(115200);
 
     // Initialize Motors
+    pinMode(MANDREL_STEP, OUTPUT);
+    pinMode(MANDREL_DIR, OUTPUT);
+    pinMode(MANDREL_EN, OUTPUT);
+    pinMode(CARRIAGE_STEP, OUTPUT);
+    pinMode(CARRIAGE_DIR, OUTPUT);
+    pinMode(CARRIAGE_EN, OUTPUT);
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
+
+    digitalWrite(MANDREL_EN, LOW);
+    digitalWrite(CARRIAGE_EN, LOW);
+    digitalWrite(MANDREL_DIR, LOW);
+    digitalWrite(CARRIAGE_DIR, HIGH);
 
     // Set speeds and accelerations
     mandrel.setMaxSpeed(1000);
-    mandrel.setSpeed(600);
+    mandrel.setSpeed(800);
     carriage.setMaxSpeed(3000);
     carriage.setAcceleration(5000);
 
@@ -162,18 +183,16 @@ void loop() {
     switch (currentState) {
 
         case PAUSED: { 
-            Serial.println("STATE = PAUSED"); 
 
             break;  // Motors held in position, waiting for UI command to start or zero
         }
 
         case ZEROING: {
-            Serial.println("STATE = ZEROING");
 
-            carriage.setSpeed(-400); // Slowly move to limit switch
+            carriage.setSpeed(-800); // Slowly move to limit switch
             carriage.runSpeed();
 
-            if (digitalRead(CARRIAGE_LIMIT) == HIGH) {           // Check if limit switch is active
+            if (digitalRead(CARRIAGE_LIMIT) == HIGH) {          // Check if limit switch is active
                 carriage.stop();                                // Stop motion
                 carriage.setCurrentPosition(0);                 // Update carriage position to zero
                 lastManStep = mandrel.currentPosition();        // Update mandrel postion to zero
@@ -184,9 +203,6 @@ void loop() {
         }
 
         case MOVING: {
-            Serial.println("STATE = MOVING");
-
-            mandrel.setSpeed(600);
             
             // 1. Getneeded information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
@@ -231,7 +247,6 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            Serial.println("STATE = DWELLING");
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -250,7 +265,6 @@ void loop() {
         }
 
         case FINISHED: {
-            Serial.println("STATE = FINISHED");
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
