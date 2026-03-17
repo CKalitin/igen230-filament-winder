@@ -169,15 +169,9 @@ void setup() {
     // SET MAN D (Your global variable used in math)
     manD = 55.0;
 
-    void loop() {
-    // runSpeed() does not use acceleration or targets. 
-    // It just pulses the pin at the speed defined by setSpeed().
-    mandrel.runSpeed();
-    carriage.runSpeed();
-
     // 5. FORCE STATE TO ZEROING
     currentState = ZEROING;
-    Serial.println("STATE = ZEROING"); 
+    Serial.println("STATE = ZEROING");
 }
 
 void loop() {
