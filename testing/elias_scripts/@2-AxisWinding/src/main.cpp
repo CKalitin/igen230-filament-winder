@@ -177,7 +177,7 @@ void setup() {
 
     // 5. FORCE STATE TO ZEROING
     currentState = ZEROING;
-    Serial.println("STATE = ZEROING");
+    Serial.println("STATE = ZEROING"); 
 }
 
 void loop() {
