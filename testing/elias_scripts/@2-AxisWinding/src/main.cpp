@@ -156,14 +156,15 @@ void setup() {
     digitalWrite(CARRIAGE_DIR, HIGH);
 
     // Set speeds and accelerations
-    mandrel.setMaxSpeed(1000);
-    mandrel.setSpeed(800);
+    mandrel.setMaxSpeed(3000);
+    mandrel.setSpeed(2000);
     carriage.setMaxSpeed(3000);
     carriage.setAcceleration(5000);
+    carriage.setSpeed(2000);
 
     // MANUALLY ADD A TEST LAYER (since UI isn't connected yet)
     // Params: length, angle, offset, stepover, dwell, diameter
-    LayerFromUI(100.0, 45.0, 0.0, 2.0, 180.0, 55.0);
+    LayerFromUI(100.0, 1.0, 0.0, 2.0, 180.0, 55.0);
     
     // SET MAN D (Your global variable used in math)
     manD = 55.0;
@@ -189,17 +190,27 @@ void loop() {
 
         case ZEROING: {
 
-            carriage.setSpeed(-800); // Slowly move to limit switch
+            carriage.setSpeed(-1000); // Slowly move to limit switch
             carriage.runSpeed();
 
-            if (digitalRead(CARRIAGE_LIMIT) == HIGH) {          // Check if limit switch is active
-                carriage.stop();                                // Stop motion
+            if (digitalRead(CARRIAGE_LIMIT) == LOW) {          // Check if limit switch is active
+                carriage.stop();                               // Stop motion
+                delay(500);                                    // Wait half a second
+
+                carriage.setCurrentPosition(0);
+                carriage.moveTo(160); 
+                
+                while (carriage.distanceToGo() != 0) {
+                    carriage.run();
+                }
+
                 carriage.setCurrentPosition(0);                 // Update carriage position to zero
                 lastManStep = mandrel.currentPosition();        // Update mandrel postion to zero
+                delay(2000);                                    // Wait two seconds
                 currentState = MOVING;                          // Initialize next state
                 Serial.println("Zeroing Complete. Winding..."); // Print zeroing confirmation to screen
             }
-            else break;  // Exit Zeroing state
+            break;  // Exit Zeroing state
         }
 
         case MOVING: {
@@ -229,7 +240,6 @@ void loop() {
 
             // 3. Check for End of Pass
             float currentPosMM = carriage.currentPosition() / stepsPerMM;   // Convert position in steps to mm
-            Serial.println(currentPosMM);
 
             // Enter Dwell state if the carriage has reached the end of a pass
             if (activeLayer->isGoingForward() && currentPosMM >= target) currentState = DWELLING;  
