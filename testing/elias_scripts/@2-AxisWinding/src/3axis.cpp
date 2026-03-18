@@ -86,6 +86,13 @@ class Layer{
             else return _offset;
         }
 
+        // Returns the toolhead position in steps for a given direction
+        // Forward pass: fiber feeds at +angle, reverse pass: fiber feeds at -angle
+        long getToolheadTarget(bool goingForward, float stepsPerRev) const {
+            float toolheadAngle = goingForward ? _angle : -_angle;  // Flip sign on direction change
+            return (long)((toolheadAngle / 360.0) * stepsPerRev);
+        }
+
         // Lets the loop know which way the carriage is moving
         bool isGoingForward() const { return _goForward; }
 
@@ -131,9 +138,11 @@ const int microsteps = 16;    // Not Sure about this, ask Loki
 const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
 const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
 const int manTeeth = 40;      // Number of pulley teeth on mandrel pulley
+const int toolheadTeeth = 60; // Number of pulley teeth on toolhead pulley
 
-const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);               // Carriage steps per mm moved
-const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);   // Required carriage steps per mandrel step
+const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
+const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required carriage steps per mandrel step
+const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)
@@ -142,10 +151,14 @@ float manD;   // Mandrel Diameter (mm)
 float carAccumulator = 0;   // Save fractional steps to move carriage
 long lastManStep;       // Stores previous loop's mandrel position
 long dwellTargetStep;   // Number of extra steps mandrel must move at end of a pass
+bool toolheadFlipDone = false;  // Tracks whether toolhead has finished flipping
+bool carriageZeroed = false;
+bool toolheadZeroed = false;
 
 // Stepper Objects
-AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     //creates object called mandrel to store current step position, target position, speed, timing
-AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  //same as above but for the carriage
+AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
+AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  // Same as above but for the carriage
+AccelStepper toolhead(AccelStepper::DRIVER, TOOLHEAD_STEP, TOOLHEAD_DIR);  // Same but for the toolhead
 
 void setup() {
     Serial.begin(115200);
@@ -157,16 +170,18 @@ void setup() {
     pinMode(CARRIAGE_STEP, OUTPUT);
     pinMode(CARRIAGE_DIR, OUTPUT);
     pinMode(CARRIAGE_EN, OUTPUT);
+    pinMode(TOOLHEAD_STEP, OUTPUT);
+    pinMode(TOOLHEAD_DIR, OUTPUT);
+    pinMode(TOOLHEAD_EN, OUTPUT);
+    pinMode(TOOLARM_STEP, OUTPUT);
+    pinMode(TOOLARM_DIR, OUTPUT);
+    pinMode(TOOLARM_EN, OUTPUT);
 
     // Define Limit Switch and E-Stop Directions
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
+    pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
+    pinMode(TOOLARM_LIMIT, INPUT_PULLUP);
     pinMode(E_STOP, INPUT);
-
-    // Initialize Motors and Switches
-    digitalWrite(MANDREL_EN, LOW);
-    digitalWrite(CARRIAGE_EN, LOW);
-    digitalWrite(MANDREL_DIR, LOW);
-    digitalWrite(CARRIAGE_DIR, HIGH);
 
     // Set speeds and accelerations
     mandrel.setMaxSpeed(2000);
@@ -174,6 +189,8 @@ void setup() {
     carriage.setMaxSpeed(2000);
     carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
+    toolhead.setMaxSpeed(2000);
+    toolhead.setAcceleration(3000);
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
@@ -223,33 +240,49 @@ void loop() {
         case ZEROING: {
             previousState = currentState;
 
-            carriage.setSpeed(-600); // Slowly move to limit switch
-            carriage.runSpeed();
+            // Zero the carriage
+            if (!carriageZeroed) {
+                carriage.setSpeed(-600);
+                carriage.runSpeed();
 
-            if (digitalRead(CARRIAGE_LIMIT) == LOW) {    // Check if limit switch is active
-                carriage.stop();                         // Stop motion
-                delay(200);                              // Wait half a second
-
-                // carriage.move(200);
-                // carriage.setSpeed(600);
-                // while (carriage.distanceToGo() != 0) {
-                //    carriage.runSpeed();
-                // }
-
-                // Temporarily set the carriage zero/home and move away from the limit switch a bit
-                carriage.setCurrentPosition(0);
-                carriage.moveTo(200); 
-                while (carriage.distanceToGo() != 0) {
-                    carriage.run();   
+                if (digitalRead(CARRIAGE_LIMIT) == LOW) {
+                    carriage.stop();
+                    delay(200);
+                    carriage.setCurrentPosition(0);
+                    carriage.moveTo(200);
+                    while (carriage.distanceToGo() != 0) carriage.run();
+                    carriage.setCurrentPosition(0);
+                    carriageZeroed = true;
                 }
-
-                carriage.setCurrentPosition(0);           // Update carriage position to final zero/home position
-                lastManStep = mandrel.currentPosition();  // Update mandrel postion to zero
-                delay(2000);                              // Wait two seconds
-                currentState = MOVING;                    // Initialize next state
-                Serial.println("Zeroing Complete");       // Print zeroing confirmation to screen
             }
-            break;  // Exit Zeroing state
+
+            // Zero the toolhead
+            else if (!toolheadZeroed) {
+                toolhead.setSpeed(-400);
+                toolhead.runSpeed();
+
+                if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
+                    toolhead.stop();
+                    delay(200);
+                    toolhead.setCurrentPosition(0);
+                    toolheadZeroed = true;
+                }
+            }
+
+            // Move to first toolhead position and start winding
+            else {
+                long firstTarget = activeLayer->getToolheadTarget(true, toolheadStepsPerRev);
+                toolhead.moveTo(firstTarget);
+                toolhead.run();
+
+                if (toolhead.distanceToGo() == 0) {
+                    lastManStep = mandrel.currentPosition();
+                    delay(2000);
+                    currentState = MOVING;
+                    Serial.println("Zeroing Complete");
+                }
+            }
+            break;
         }
 
         case MOVING: {
@@ -301,7 +334,19 @@ void loop() {
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
-            if (mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
+            if (!toolheadFlipDone) {
+                // isGoingForward() still holds the OLD direction here (countPass hasn't been called yet)
+                // so we target the NEW direction by flipping the sign
+                bool nextDirection = !activeLayer->isGoingForward();
+                long toolheadTarget = activeLayer->getToolheadTarget(nextDirection, toolheadStepsPerRev);
+                toolhead.moveTo(toolheadTarget);
+                toolhead.run();
+
+                if (toolhead.distanceToGo() == 0) {
+                    toolheadFlipDone = true;  // Toolhead is in position
+                }
+            }
+            if (toolheadFlipDone && mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
                 activeLayer->countPass();     // Increment pass and flip direction
 
                 if (activeLayer->isDone()) {  // Check if layer is finished and update current state
@@ -326,6 +371,7 @@ void loop() {
                 activeLayerIndex++;
                 carAccumulator = 0;
                 lastManStep = mandrel.currentPosition();
+                toolheadFlipDone = false;  
                 currentState = MOVING;
             }
             else {
