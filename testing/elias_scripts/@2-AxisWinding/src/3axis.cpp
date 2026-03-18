@@ -1,17 +1,31 @@
 #include <Arduino.h>
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
-// Pin definitions
-#define MANDREL_STEP   25  // Mandrel driver Step
-#define MANDREL_DIR    26 // Mandrel driver Direction
-#define CARRIAGE_STEP  14 // Carriage driver Step
-#define CARRIAGE_DIR   12 // Carriage driver Direction
+// Mandrel pins
+#define MANDREL_DIR    12 // Mandrel driver Direction
+#define MANDREL_STEP   13 // Mandrel driver Step
+#define MANDREL_EN     14 // Mandrel driver Enable
 
-#define MANDREL_EN     27  // Mandrel driver Enable
-#define CARRIAGE_EN    33 // Carriage driver Enable
+// Carriage pins
+#define CARRIAGE_DIR   15 // Carriage driver Direction
+#define CARRIAGE_STEP  16 // Carriage driver Step
+#define CARRIAGE_EN    17 // Carriage driver Enable
+#define CARRIAGE_LIMIT 18 // Carriage limit switch
 
-#define CARRIAGE_LIMIT 22 // Carriage limit switch
-#define E_STOP         23 // Emengency shut off
+// Toolhead pins
+#define TOOLHEAD_DIR   21 // Toolhead driver Direction
+#define TOOLHEAD_STEP  22 // Toolhead driver Step
+#define TOOLHEAD_EN    23 // Toolhead driver Enable
+#define TOOLHEAD_LIMIT 19 // Toolhead limit switch
+
+// Toolarm pins
+#define TOOLARM_DIR    25 // Toolhead driver Direction
+#define TOOLARM_STEP   26 // Toolhead driver Step
+#define TOOLARM_EN     27 // Toolhead driver Enable
+#define TOOLARM_LIMIT  32 // Toolarm limit switch
+
+// Emergency shut off pin
+#define E_STOP 34 // Emengency shut off
 
 class Layer{
     // Information not accessible outside the Layer class
@@ -108,12 +122,12 @@ enum windingState {
 };
 
 windingState currentState = PAUSED; // Paused on statup, no motion
-windingState previousSate;          // Tracks last active state in case of E-Stop or pause
+windingState previousState;          // Tracks last active state in case of E-Stop or pause
 
 // Harware Variables (Subject to change)
 const float Pitch = 2.0;      // Belt pitch (in mm)
-const int motorSteps = 200.0; // Number of steps motor makes per revolution
-const int microsteps = 16;     // Not Sure about this, ask Loki
+const int motorSteps = 200;   // Number of steps motor makes per revolution
+const int microsteps = 16;    // Not Sure about this, ask Loki
 const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
 const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
 const int manTeeth = 40;      // Number of pulley teeth on mandrel pulley
@@ -125,7 +139,7 @@ const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTe
 float manD;   // Mandrel Diameter (mm)
 
 // Global Control Variables
-float carAccumulator;   // Save fractional steps to move carriage
+float carAccumulator = 0;   // Save fractional steps to move carriage
 long lastManStep;       // Stores previous loop's mandrel position
 long dwellTargetStep;   // Number of extra steps mandrel must move at end of a pass
 
@@ -177,6 +191,19 @@ void loop() {
     // If no layers exist, keep motors stopped
     if (totalLayers == 0) return;
 
+    // Emergency shut off logic
+    if (digitalRead(E_STOP) == HIGH) {
+        if (currentState != PAUSED) {
+            previousState = currentState;  // Save state before pausing
+            currentState = PAUSED;
+        }
+    }
+    else {
+        if (currentState == PAUSED) {
+            currentState = previousState;
+        }
+    }
+
     // Pointer to the current active layer for clarity
     Layer* activeLayer = layers[activeLayerIndex];
 
@@ -184,15 +211,17 @@ void loop() {
 
         case PAUSED: {
 
-            if (digitalRead(E_STOP) == HIGH) {
-                currentState = previousSate;
-            }
+            // Stop all motion
+            mandrel.setSpeed(0);
+            mandrel.runSpeed();   
+            carriage.stop();
+            carriage.run();
 
-            break;  // Motors held in position, waiting for UI command to start or zero
+            break;  // Motors held in position, waiting for command to start or zero
         }
 
         case ZEROING: {
-            // previousSate = currentState;
+            previousState = currentState;
 
             carriage.setSpeed(-600); // Slowly move to limit switch
             carriage.runSpeed();
@@ -224,7 +253,7 @@ void loop() {
         }
 
         case MOVING: {
-            // previousSate = currentState;
+            previousState = currentState;
 
             // Get needed information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
@@ -268,7 +297,7 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            // previousSate = currentState;
+            previousState = currentState;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -287,7 +316,7 @@ void loop() {
         }
 
         case FINISHED: {
-            // previousSate = currentState;
+            previousState = currentState;
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
@@ -297,6 +326,7 @@ void loop() {
                 activeLayerIndex++;
                 carAccumulator = 0;
                 lastManStep = mandrel.currentPosition();
+                currentState = MOVING;
             }
             else {
                 // All layers from the UI are done
