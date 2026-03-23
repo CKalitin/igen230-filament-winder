@@ -75,12 +75,31 @@ class Layer{
         // Lets the loop know which way the carriage is moving
         bool isGoingForward() const { return _goForward; }
 
-        // PROGRESS: Logic for the loop to interact with  
+        // Logic for the loop to use
         void countPass() {
             _passDone++;              // Track one completed pass along the mandrel
             _goForward = !_goForward; // Flips direction for the return stroke
         }                
         bool isDone() const { return _passDone >= _pass; }  // Returns true when layer is complete
+
+        // Inside class Layer public section:
+        float getEstimatedTimeSeconds(float mandrelSpeedRPM) {
+            if (mandrelSpeedRPM <= 0) return 0;
+            
+            float safeAngle = _angle;
+            if (safeAngle > 89.0) safeAngle = 89.9;
+            float angleRad = radians(safeAngle);
+
+            // Mandrel revolutions per single pass
+            float revsPerPass = (_length / tan(angleRad)) / (PI * _diameter);
+            float minutesPerPass = revsPerPass / mandrelSpeedRPM;
+            
+            // Add time for the dwell/stepover rotation
+            float dwellRevs = (_dwell + getStepoverDeg()) / 360.0;
+            float dwellMinutes = dwellRevs / mandrelSpeedRPM;
+
+            return (minutesPerPass + dwellMinutes) * _pass * 60.0; // Total seconds
+        }
 };
 
 // Array of pointers to store the data for each layer from the UI
