@@ -2,14 +2,14 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    13 // Mandrel driver Direction
+#define MANDREL_DIR    4  // Mandrel driver Direction
 #define MANDREL_STEP   23 // Mandrel driver Step
-#define MANDREL_EN     22  // Mandrel driver Enable
+#define MANDREL_EN     22 // Mandrel driver Enable
 
 // Carriage pins
 #define CARRIAGE_DIR   17 // Carriage driver Direction
 #define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    5 // Carriage driver Enable
+#define CARRIAGE_EN    5  // Carriage driver Enable
 #define CARRIAGE_LIMIT 35 // Carriage limit switch
 
 // Toolhead pins
@@ -19,9 +19,9 @@
 #define TOOLHEAD_LIMIT 32 // Toolhead limit switch
 
 // Toolarm pins
-#define TOOLARM_DIR    1 // Toolhead driver Direction
-#define TOOLARM_STEP   3 // Toolhead driver Step
-#define TOOLARM_EN     4 // Toolhead driver Enable
+#define TOOLARM_DIR    25
+#define TOOLARM_STEP   26
+#define TOOLARM_EN     27
 #define TOOLARM_LIMIT  2 // Toolarm limit switch
 
 // Emergency shut off pin
@@ -191,8 +191,6 @@ void setup() {
     digitalWrite(TOOLHEAD_EN, LOW);
     digitalWrite(TOOLHEAD_DIR, LOW);
 
-    digitalWrite(E_STOP, LOW);
-
     // Set speeds and accelerations
     mandrel.setMaxSpeed(2000);
     mandrel.setSpeed(1000);
@@ -210,7 +208,7 @@ void setup() {
     manD = 55.0;
 
     // Enter Zeroing state on startup
-    currentState = MOVING;
+    currentState = ZEROING;
     Serial.println("STATE = ZEROING");
 }
 
@@ -237,8 +235,7 @@ void loop() {
     switch (currentState) {
 
         case PAUSED: {
-          Serial.println("PAUSED");
-
+            Serial.print("PAUSED");
             // Stop all motion
             mandrel.setSpeed(0);
             mandrel.runSpeed();   
@@ -257,6 +254,9 @@ void loop() {
                 carriage.setSpeed(-600);
                 carriage.runSpeed();
 
+                carriageZeroed = true;
+                return;
+
                 if (digitalRead(CARRIAGE_LIMIT) == LOW) {
                     carriage.stop();
                     delay(200);
@@ -272,6 +272,9 @@ void loop() {
             else if (!toolheadZeroed) {
                 toolhead.setSpeed(-400);
                 toolhead.runSpeed();
+                
+                toolheadZeroed = true;
+                return;
 
                 if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
                     toolhead.stop();
@@ -375,7 +378,6 @@ void loop() {
         }
 
         case FINISHED: {
-            Serial.println("FINISHED");
             previousState = currentState;
 
             // Move on to the next layer in the array if there is one
