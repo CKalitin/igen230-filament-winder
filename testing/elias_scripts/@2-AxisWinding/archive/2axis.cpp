@@ -7,25 +7,14 @@
 #define CARRIAGE_EN    5
 #define CARRIAGE_LIMIT 35
 
-// Toolhead pins (driver slot 2)
+// Toolhead pins (using mandrel driver slot, pins 18/19/21)
 #define TOOLHEAD_STEP  18
 #define TOOLHEAD_DIR   19
 #define TOOLHEAD_EN    21
 #define TOOLHEAD_LIMIT 32
 
-// Mandrel pins (driver slot 3)
-#define MANDREL_STEP   12
-#define MANDREL_DIR    14
-#define MANDREL_EN     27
-
-// Toolarm pins (driver slot 4)
-#define TOOLARM_STEP   26
-#define TOOLARM_DIR    25
-#define TOOLARM_EN     33
-#define TOOLARM_LIMIT  2
-
 // Emergency shut off pin
-#define E_STOP 15
+#define E_STOP 13
 
 // Hardware Variables
 const float Pitch = 2.0;
@@ -33,26 +22,17 @@ const int motorSteps = 200;
 const int microsteps = 16;
 const int motorTeeth = 20;
 const int carTeeth = 20;
-const int manTeeth = 40;
 const int toolheadTeeth = 60;
 
-const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);
-const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);
+const float stepsPerMM = (motorSteps * microsteps) / (carTeeth * Pitch);
 const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);
 
 // Stepper Objects
-AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);
 AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);
 AccelStepper toolhead(AccelStepper::DRIVER, TOOLHEAD_STEP, TOOLHEAD_DIR);
 
-// Gearing variables
-float carAccumulator = 0;
-long lastManStep = 0;
-
-// Test layer parameters
-float manD = 55.0;
-float windAngle = 45.0;
-float layerLength = 50.0;
+// Winding parameters
+float layerLength = 50.0;  // mm
 bool goingForward = true;
 
 // State machine
@@ -65,51 +45,28 @@ enum State {
 
 State currentState = ZEROING_TOOLHEAD;
 
-float getStepRatio() {
-    float safeAngle = windAngle;
-    if (safeAngle > 89.0) safeAngle = 89.9;
-    if (safeAngle < 1.0) safeAngle = 1.0;
-    float angleRad = radians(safeAngle);
-    float mmPerRev = PI * manD / tan(angleRad);
-    return (mmPerRev * stepsPerMM) / stepsPerRev;
-}
-
 void setup() {
     Serial.begin(115200);
 
     // Motor driver pins
-    pinMode(MANDREL_STEP, OUTPUT);
-    pinMode(MANDREL_DIR, OUTPUT);
-    pinMode(MANDREL_EN, OUTPUT);
     pinMode(CARRIAGE_STEP, OUTPUT);
     pinMode(CARRIAGE_DIR, OUTPUT);
     pinMode(CARRIAGE_EN, OUTPUT);
     pinMode(TOOLHEAD_STEP, OUTPUT);
     pinMode(TOOLHEAD_DIR, OUTPUT);
     pinMode(TOOLHEAD_EN, OUTPUT);
-    pinMode(TOOLARM_STEP, OUTPUT);
-    pinMode(TOOLARM_DIR, OUTPUT);
-    pinMode(TOOLARM_EN, OUTPUT);
 
     // Limit switches and E-Stop
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
     pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
-    pinMode(TOOLARM_LIMIT, INPUT_PULLUP);
     pinMode(E_STOP, INPUT);
 
-    // Enable all drivers
-    digitalWrite(MANDREL_EN, LOW);
+    // Enable drivers
     digitalWrite(CARRIAGE_EN, LOW);
     digitalWrite(TOOLHEAD_EN, LOW);
-    digitalWrite(TOOLARM_EN, LOW);
 
-    // Mandrel: matched to working 2-axis speeds
-    mandrel.setMaxSpeed(2000);
-    mandrel.setSpeed(1000);
-
-    // Carriage
+    // Carriage: same speeds as working 2-axis code
     carriage.setMaxSpeed(2000);
-    carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
 
     // Toolhead
@@ -143,10 +100,7 @@ void loop() {
             toolhead.run();
 
             if (toolhead.distanceToGo() == 0) {
-                lastManStep = mandrel.currentPosition();
-                Serial.println("Toolhead positioned at +90 deg. Starting winding in 2 seconds...");
-                Serial.printf("Step ratio: %.4f\n", getStepRatio());
-                Serial.printf("StepsPerMM: %.2f  StepsPerRev: %.2f\n", stepsPerMM, stepsPerRev);
+                Serial.println("Toolhead positioned at +90 deg. Starting in 2 seconds...");
                 delay(2000);
                 currentState = WINDING;
             }
@@ -154,29 +108,10 @@ void loop() {
         }
 
         case WINDING: {
-            float ratio = getStepRatio();
-
-            // Step the mandrel at constant speed
-            mandrel.runSpeed();
-
-            // Electronic gearing: sync carriage to mandrel
-            long stepNow = mandrel.currentPosition();
-
-            if (stepNow != lastManStep) {
-                long delta = stepNow - lastManStep;
-                lastManStep = stepNow;
-
-                float moveSign = goingForward ? 1.0 : -1.0;
-                carAccumulator += (delta * ratio * moveSign);
-
-                if (abs(carAccumulator) >= 1.0) {
-                    long numStep = (long)carAccumulator;
-                    carriage.move(numStep);
-                    carAccumulator -= numStep;
-                }
-            }
-
-            carriage.run();
+            // Drive carriage directly at constant speed
+            float direction = goingForward ? 1.0 : -1.0;
+            carriage.setSpeed(1000 * direction);
+            carriage.runSpeed();
 
             // Check end of pass
             float currentPosMM = carriage.currentPosition() / stepsPerMM;
@@ -195,27 +130,15 @@ void loop() {
                 toolhead.moveTo(toolheadTarget);
                 while (toolhead.distanceToGo() != 0) {
                     toolhead.run();
-                    mandrel.runSpeed();  // Keep mandrel spinning during flip
                 }
 
-                lastManStep = mandrel.currentPosition();
                 Serial.printf("Pass complete. CarPos: %.2f mm  Direction: %s\n",
                     currentPosMM, goingForward ? "FWD" : "REV");
-            }
-
-            // Debug output every 5000 mandrel steps
-            static long lastDebug = 0;
-            if (stepNow - lastDebug > 5000) {
-                lastDebug = stepNow;
-                Serial.printf("manPos: %ld  carPos: %ld  carMM: %.2f  dir: %s\n",
-                    stepNow, carriage.currentPosition(), currentPosMM,
-                    goingForward ? "FWD" : "REV");
             }
             break;
         }
 
         case FINISHED: {
-            mandrel.setSpeed(0);
             carriage.setSpeed(0);
             Serial.println("Winding complete.");
             while (true) { delay(1000); }
