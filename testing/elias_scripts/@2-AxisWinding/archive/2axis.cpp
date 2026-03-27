@@ -1,27 +1,27 @@
 #include <Arduino.h>
 #include <AccelStepper.h>
 
-// Mandrel pins
-#define MANDREL_DIR    4
-#define MANDREL_STEP   23
-#define MANDREL_EN     22
-
-// Carriage pins
-#define CARRIAGE_DIR   17
+// Carriage pins (driver slot 1)
 #define CARRIAGE_STEP  16
+#define CARRIAGE_DIR   17
 #define CARRIAGE_EN    5
 #define CARRIAGE_LIMIT 35
 
-// Toolhead pins
-#define TOOLHEAD_DIR   19
+// Toolhead pins (driver slot 2)
 #define TOOLHEAD_STEP  18
+#define TOOLHEAD_DIR   19
 #define TOOLHEAD_EN    21
 #define TOOLHEAD_LIMIT 32
 
-// Toolarm pins
-#define TOOLARM_DIR    25
+// Mandrel pins (driver slot 3)
+#define MANDREL_STEP   12
+#define MANDREL_DIR    14
+#define MANDREL_EN     27
+
+// Toolarm pins (driver slot 4)
 #define TOOLARM_STEP   26
-#define TOOLARM_EN     27
+#define TOOLARM_DIR    25
+#define TOOLARM_EN     33
 #define TOOLARM_LIMIT  2
 
 // Emergency shut off pin
