@@ -147,7 +147,7 @@ void loop() {
             toolhead.setSpeed(-400);
             toolhead.runSpeed();
 
-            if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
+            if (digitalRead(TOOLHEAD_LIMIT) == HIGH) {
                 toolhead.setSpeed(0);
                 delay(200);
 
