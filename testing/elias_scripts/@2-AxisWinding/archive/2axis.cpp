@@ -137,7 +137,7 @@ const int motorSteps = 200.0; // Number of steps motor makes per revolution
 const int microsteps = 16;    // Not Sure about this, ask Loki
 const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
 const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
-const int manTeeth = 40;      // Number of pulley teeth on mandrel pulley
+const int manTeeth = 20;      // Number of pulley teeth on mandrel pulley
 
 const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);               // Carriage steps per mm moved
 const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);   // Required carriage steps per mandrel step
@@ -184,7 +184,7 @@ void setup() {
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(50.0, 1.0, 0.0, 2.0, 180.0, 55.0);
+    LayerFromUI(250.0, 1.0, 0.0, 2.0, 180.0, 55.0);
     
     // Set global mandrel diameter (mm)
     manD = 55.0;
@@ -289,7 +289,12 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            // previousSate = currentState;
+            previousSate = currentState;
+
+            // Cancel any queued carriage motion
+            carriage.stop();                                         
+            carriage.setCurrentPosition(carriage.currentPosition());
+            carAccumulator = 0;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -301,6 +306,7 @@ void loop() {
                 }
                 else {
                     lastManStep = mandrel.currentPosition(); // Update mandrel position before resuming
+                    carAccumulator = 0;
                     currentState = MOVING;
                 }
             }

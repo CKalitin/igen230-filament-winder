@@ -2,9 +2,9 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    4  // Mandrel driver Direction
-#define MANDREL_STEP   23 // Mandrel driver Step
-#define MANDREL_EN     22 // Mandrel driver Enable
+#define MANDREL_DIR    14 // Mandrel driver Direction
+#define MANDREL_STEP   12 // Mandrel driver Step
+#define MANDREL_EN     27 // Mandrel driver Enable
 
 // Carriage pins
 #define CARRIAGE_DIR   17 // Carriage driver Direction
@@ -17,12 +17,6 @@
 #define TOOLHEAD_STEP  18 // Toolhead driver Step
 #define TOOLHEAD_EN    21 // Toolhead driver Enable
 #define TOOLHEAD_LIMIT 32 // Toolhead limit switch
-
-// Toolarm pins
-#define TOOLARM_DIR    25
-#define TOOLARM_STEP   26
-#define TOOLARM_EN     27
-#define TOOLARM_LIMIT  2 // Toolarm limit switch
 
 // Emergency shut off pin
 #define E_STOP 15 // Emengency shut off
@@ -137,12 +131,12 @@ const int motorSteps = 200;   // Number of steps motor makes per revolution
 const int microsteps = 16;    // Not Sure about this, ask Loki
 const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
 const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
-const int manTeeth = 40;      // Number of pulley teeth on mandrel pulley
+const int manTeeth = 20;      // Number of pulley teeth on mandrel pulley
 const int toolheadTeeth = 60; // Number of pulley teeth on toolhead pulley
 
 const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
-const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required carriage steps per mandrel step
-const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
+const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required mandrel steps per revolution
+const float toolheadStepsPerRev = (motorSteps * microsteps) * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)
@@ -173,14 +167,14 @@ void setup() {
     pinMode(TOOLHEAD_STEP, OUTPUT);
     pinMode(TOOLHEAD_DIR, OUTPUT);
     pinMode(TOOLHEAD_EN, OUTPUT);
-    pinMode(TOOLARM_STEP, OUTPUT);
-    pinMode(TOOLARM_DIR, OUTPUT);
-    pinMode(TOOLARM_EN, OUTPUT);
+    pinMode(TOOLHEAD_STEP, OUTPUT);
+    pinMode(TOOLHEAD_DIR, OUTPUT);
+    pinMode(TOOLHEAD_EN, OUTPUT);
 
     // Define Limit Switch and E-Stop Directions
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
     pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
-    pinMode(TOOLARM_LIMIT, INPUT_PULLUP);
+    pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
     pinMode(E_STOP, INPUT);
 
     // Initialize Motors and Switches
@@ -198,14 +192,19 @@ void setup() {
     carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
     toolhead.setMaxSpeed(2000);
+    toolhead.setSpeed(1000);
     toolhead.setAcceleration(3000);
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(50.0, 45.0, 0.0, 2.0, 180.0, 55.0);
+    LayerFromUI(100.0, 45.0, 0.0, 2.0, 180.0, 55.0);
     
     // Set global mandrel diameter (mm)
     manD = 55.0;
+
+    carriage.setCurrentPosition(0);
+    toolhead.setCurrentPosition(0);
+    lastManStep = mandrel.currentPosition();
 
     // Enter Zeroing state on startup
     currentState = ZEROING;
@@ -216,6 +215,7 @@ void loop() {
     // If no layers exist, keep motors stopped
     if (totalLayers == 0) return;
 
+    /* 
     // Emergency shut off logic
     if (digitalRead(E_STOP) == HIGH) {
         if (currentState != PAUSED) {
@@ -228,6 +228,7 @@ void loop() {
             currentState = previousState;
         }
     }
+    */
 
     // Pointer to the current active layer for clarity
     Layer* activeLayer = layers[activeLayerIndex];
@@ -235,7 +236,7 @@ void loop() {
     switch (currentState) {
 
         case PAUSED: {
-            Serial.print("PAUSED");
+
             // Stop all motion
             mandrel.setSpeed(0);
             mandrel.runSpeed();   
@@ -246,7 +247,6 @@ void loop() {
         }
 
         case ZEROING: {
-            Serial.println("ZEROING");
             previousState = currentState;
 
             // Zero the carriage
@@ -254,10 +254,7 @@ void loop() {
                 carriage.setSpeed(-600);
                 carriage.runSpeed();
 
-                carriageZeroed = true;
-                return;
-
-                if (digitalRead(CARRIAGE_LIMIT) == LOW) {
+                if (digitalRead(CARRIAGE_LIMIT) == HIGH) {
                     carriage.stop();
                     delay(200);
                     carriage.setCurrentPosition(0);
@@ -272,9 +269,6 @@ void loop() {
             else if (!toolheadZeroed) {
                 toolhead.setSpeed(-400);
                 toolhead.runSpeed();
-                
-                toolheadZeroed = true;
-                return;
 
                 if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
                     toolhead.stop();
@@ -301,7 +295,6 @@ void loop() {
         }
 
         case MOVING: {
-            Serial.println("MOVING");
             previousState = currentState;
 
             // Get needed information from the Layer class
@@ -342,12 +335,25 @@ void loop() {
                 long stepsToDwell = (totalDeg / 360.0) * stepsPerRev;           // Calculate how many steps to turn required angle
                 dwellTargetStep = mandrel.currentPosition() + stepsToDwell;     // Calculates which step number to end Dwell state
             }
+
+            // At the end of MOVING case, add:
+            static long lastDebugStep = 0;
+            if (mandrel.currentPosition() - lastDebugStep >= 1600) {  // Every full revolution
+                float carPosMM = carriage.currentPosition() / stepsPerMM;
+                Serial.printf("1 rev done. Carriage at: %.2f mm\n", carPosMM);
+                lastDebugStep = mandrel.currentPosition();
+            }
+
             break;  // Exit Moving state
         }
 
-        case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            Serial.println("DWELLING");
+        case DWELLING: {    // Spin the mandrel and toolhead to align the fiber for the next pass, no carriage motion
             previousState = currentState;
+
+            // Cancel any queued carriage motion
+            carriage.stop();                                         
+            carriage.setCurrentPosition(carriage.currentPosition());
+            carAccumulator = 0;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -356,7 +362,10 @@ void loop() {
                 // so we target the NEW direction by flipping the sign
                 bool nextDirection = !activeLayer->isGoingForward();
                 long toolheadTarget = activeLayer->getToolheadTarget(nextDirection, toolheadStepsPerRev);
-                toolhead.moveTo(toolheadTarget);
+
+                if (toolhead.currentPosition() != toolheadTarget && toolhead.distanceToGo() == 0) {
+                    toolhead.moveTo(toolheadTarget);
+                }
                 toolhead.run();
 
                 if (toolhead.distanceToGo() == 0) {
@@ -371,8 +380,10 @@ void loop() {
                 }
                 else {
                     lastManStep = mandrel.currentPosition(); // Update mandrel position before resuming
+                    carAccumulator = 0;
                     currentState = MOVING;
                 }
+                toolheadFlipDone = false;
             }
             break;  // Exit Dwell state
         }

@@ -131,7 +131,7 @@ const int motorSteps = 200;   // Number of steps motor makes per revolution
 const int microsteps = 16;    // Not Sure about this, ask Loki
 const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
 const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
-const int manTeeth = 40;      // Number of pulley teeth on mandrel pulley
+const int manTeeth = 20;      // Number of pulley teeth on mandrel pulley
 const int toolheadTeeth = 60; // Number of pulley teeth on toolhead pulley
 
 const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
@@ -167,14 +167,14 @@ void setup() {
     pinMode(TOOLHEAD_STEP, OUTPUT);
     pinMode(TOOLHEAD_DIR, OUTPUT);
     pinMode(TOOLHEAD_EN, OUTPUT);
-    pinMode(TOOLARM_STEP, OUTPUT);
-    pinMode(TOOLARM_DIR, OUTPUT);
-    pinMode(TOOLARM_EN, OUTPUT);
+    pinMode(TOOLHEAD_STEP, OUTPUT);
+    pinMode(TOOLHEAD_DIR, OUTPUT);
+    pinMode(TOOLHEAD_EN, OUTPUT);
 
     // Define Limit Switch and E-Stop Directions
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
     pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
-    pinMode(TOOLARM_LIMIT, INPUT_PULLUP);
+    pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
     pinMode(E_STOP, INPUT);
 
     // Initialize Motors and Switches
@@ -333,6 +333,11 @@ void loop() {
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
             previousState = currentState;
+
+            // Cancel any queued carriage motion
+            carriage.stop();                                         
+            carriage.setCurrentPosition(carriage.currentPosition());
+            carAccumulator = 0;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
