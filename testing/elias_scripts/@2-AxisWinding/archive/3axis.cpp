@@ -2,9 +2,9 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    4  // Mandrel driver Direction
-#define MANDREL_STEP   23 // Mandrel driver Step
-#define MANDREL_EN     22 // Mandrel driver Enable
+#define MANDREL_DIR    14 // Mandrel driver Direction
+#define MANDREL_STEP   12 // Mandrel driver Step
+#define MANDREL_EN     27 // Mandrel driver Enable
 
 // Carriage pins
 #define CARRIAGE_DIR   17 // Carriage driver Direction
@@ -17,12 +17,6 @@
 #define TOOLHEAD_STEP  18 // Toolhead driver Step
 #define TOOLHEAD_EN    21 // Toolhead driver Enable
 #define TOOLHEAD_LIMIT 32 // Toolhead limit switch
-
-// Toolarm pins
-#define TOOLARM_DIR    25
-#define TOOLARM_STEP   26
-#define TOOLARM_EN     27
-#define TOOLARM_LIMIT  2 // Toolarm limit switch
 
 // Emergency shut off pin
 #define E_STOP 15 // Emengency shut off
@@ -235,7 +229,7 @@ void loop() {
     switch (currentState) {
 
         case PAUSED: {
-            Serial.print("PAUSED");
+
             // Stop all motion
             mandrel.setSpeed(0);
             mandrel.runSpeed();   
@@ -246,16 +240,12 @@ void loop() {
         }
 
         case ZEROING: {
-            Serial.println("ZEROING");
             previousState = currentState;
 
             // Zero the carriage
             if (!carriageZeroed) {
                 carriage.setSpeed(-600);
                 carriage.runSpeed();
-
-                carriageZeroed = true;
-                return;
 
                 if (digitalRead(CARRIAGE_LIMIT) == LOW) {
                     carriage.stop();
@@ -272,9 +262,6 @@ void loop() {
             else if (!toolheadZeroed) {
                 toolhead.setSpeed(-400);
                 toolhead.runSpeed();
-                
-                toolheadZeroed = true;
-                return;
 
                 if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
                     toolhead.stop();
@@ -301,7 +288,6 @@ void loop() {
         }
 
         case MOVING: {
-            Serial.println("MOVING");
             previousState = currentState;
 
             // Get needed information from the Layer class
@@ -346,7 +332,6 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            Serial.println("DWELLING");
             previousState = currentState;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed

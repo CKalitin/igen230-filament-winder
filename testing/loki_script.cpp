@@ -2,7 +2,7 @@
 
 // -------------------- Pins --------------------
 #define MANDREL_STEP 26
-#define MANDREL_DIR  27
+#define MANDREL_DIR  25
 
 #define CARRIAGE_STEP 14
 #define CARRIAGE_DIR  12
