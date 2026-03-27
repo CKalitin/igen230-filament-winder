@@ -57,7 +57,6 @@ bool goingForward = true;
 
 // State machine
 enum State {
-    ZEROING_CARRIAGE,
     ZEROING_TOOLHEAD,
     POSITIONING_TOOLHEAD,
     WINDING,
@@ -104,13 +103,13 @@ void setup() {
     digitalWrite(TOOLHEAD_EN, LOW);
     digitalWrite(TOOLARM_EN, LOW);
 
-    // Mandrel: 2.5x speed (was 1000, now 2500)
-    mandrel.setMaxSpeed(5000);
-    mandrel.setSpeed(2500);
+    // Mandrel: 2x from last version (was 2500, now 5000)
+    mandrel.setMaxSpeed(10000);
+    mandrel.setSpeed(5000);
 
     // Carriage: raised max to keep up with faster mandrel
-    carriage.setMaxSpeed(5000);
-    carriage.setAcceleration(5000);
+    carriage.setMaxSpeed(10000);
+    carriage.setAcceleration(8000);
 
     // Toolhead
     toolhead.setMaxSpeed(2000);
@@ -122,31 +121,12 @@ void setup() {
 void loop() {
     switch (currentState) {
 
-        case ZEROING_CARRIAGE: {
-            carriage.setSpeed(-600);
-            carriage.runSpeed();
-
-            if (digitalRead(CARRIAGE_LIMIT) == LOW) {
-                carriage.setSpeed(0);
-                delay(200);
-
-                // Back off the switch
-                carriage.setCurrentPosition(0);
-                carriage.moveTo(200);
-                while (carriage.distanceToGo() != 0) carriage.run();
-                carriage.setCurrentPosition(0);
-
-                Serial.println("Carriage zeroed.");
-                currentState = ZEROING_TOOLHEAD;
-            }
-            break;
-        }
-
         case ZEROING_TOOLHEAD: {
             // Slowly rotate toolhead toward limit switch
             toolhead.setSpeed(-400);
             toolhead.runSpeed();
 
+            // Switch reads HIGH when pressed
             if (digitalRead(TOOLHEAD_LIMIT) == HIGH) {
                 toolhead.setSpeed(0);
                 delay(200);
@@ -161,14 +141,14 @@ void loop() {
         }
 
         case POSITIONING_TOOLHEAD: {
-            // Move toolhead to the starting winding angle
-            long firstTarget = (long)((windAngle / 360.0) * toolheadStepsPerRev);
+            // Move toolhead to +90 degrees for the first forward pass
+            long firstTarget = (long)((90.0 / 360.0) * toolheadStepsPerRev);
             toolhead.moveTo(firstTarget);
             toolhead.run();
 
             if (toolhead.distanceToGo() == 0) {
                 lastManStep = mandrel.currentPosition();
-                Serial.println("Toolhead positioned. Starting winding in 2 seconds...");
+                Serial.println("Toolhead positioned at +90 deg. Starting winding in 2 seconds...");
                 Serial.printf("Step ratio: %.4f\n", getStepRatio());
                 Serial.printf("StepsPerMM: %.2f  StepsPerRev: %.2f\n", stepsPerMM, stepsPerRev);
                 Serial.printf("Toolhead target: %ld steps\n", firstTarget);
@@ -214,8 +194,8 @@ void loop() {
             if (passComplete) {
                 goingForward = !goingForward;
 
-                // Flip toolhead to new angle
-                float toolheadAngle = goingForward ? windAngle : -windAngle;
+                // Flip toolhead 180 degrees: +90 when forward, -90 when reverse
+                float toolheadAngle = goingForward ? 90.0 : -90.0;
                 long toolheadTarget = (long)((toolheadAngle / 360.0) * toolheadStepsPerRev);
                 toolhead.moveTo(toolheadTarget);
                 while (toolhead.distanceToGo() != 0) {
