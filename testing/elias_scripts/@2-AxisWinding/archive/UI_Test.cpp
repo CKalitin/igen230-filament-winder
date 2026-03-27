@@ -10,11 +10,11 @@ void loop() {
   if (Serial.available() > 0) {
     JsonDocument doc;
 
-    // 1. Attempt to parse
+    // Attempt to parse
     DeserializationError error = deserializeJson(doc, Serial);
     if (error) return;
 
-    // 2. Extract global job settings
+    // Extract global job settings
     int diameter = doc["mandrel_diameter"] | 0;
     int axesCount = doc["axes"] | 2; // Default to 2 if not specified
     
@@ -23,7 +23,7 @@ void loop() {
     Serial.print("MM | AXES: ");
     Serial.println(axesCount);
 
-    // 3. (Optional) Logic based on axes count
+    // (Optional) Logic based on axes count
     if (axesCount == 2) {
       Serial.println("STATE: 2-Axis Winding");
     } else if (axesCount == 3) {
@@ -32,7 +32,7 @@ void loop() {
       Serial.println("STATE: 4-Axis Winding");
     }
 
-    // 4. Iterate through the layers
+    // Iterate through the layers
     JsonArray layers = doc["layers"];
     int layerCount = 0;
 
@@ -63,7 +63,7 @@ void loop() {
       delay(500); // Simulation delay
     }
 
-    // 5. Finalize the job
+    // Finalize the job
     Serial.println("STATE: JOB FINISHED");
     Serial.println("READY"); // Tells the UI the machine is idle and ok to send more
   }

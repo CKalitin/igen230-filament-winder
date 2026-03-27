@@ -2,30 +2,30 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    12 // Mandrel driver Direction
-#define MANDREL_STEP   13 // Mandrel driver Step
-#define MANDREL_EN     14 // Mandrel driver Enable
+#define MANDREL_DIR    13 // Mandrel driver Direction
+#define MANDREL_STEP   23 // Mandrel driver Step
+#define MANDREL_EN     22  // Mandrel driver Enable
 
 // Carriage pins
-#define CARRIAGE_DIR   15 // Carriage driver Direction
+#define CARRIAGE_DIR   17 // Carriage driver Direction
 #define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    17 // Carriage driver Enable
-#define CARRIAGE_LIMIT 18 // Carriage limit switch
+#define CARRIAGE_EN    5 // Carriage driver Enable
+#define CARRIAGE_LIMIT 35 // Carriage limit switch
 
 // Toolhead pins
-#define TOOLHEAD_DIR   21 // Toolhead driver Direction
-#define TOOLHEAD_STEP  22 // Toolhead driver Step
-#define TOOLHEAD_EN    23 // Toolhead driver Enable
-#define TOOLHEAD_LIMIT 19 // Toolhead limit switch
+#define TOOLHEAD_DIR   19 // Toolhead driver Direction
+#define TOOLHEAD_STEP  18 // Toolhead driver Step
+#define TOOLHEAD_EN    21 // Toolhead driver Enable
+#define TOOLHEAD_LIMIT 32 // Toolhead limit switch
 
 // Toolarm pins
-#define TOOLARM_DIR    25 // Toolhead driver Direction
-#define TOOLARM_STEP   26 // Toolhead driver Step
-#define TOOLARM_EN     27 // Toolhead driver Enable
-#define TOOLARM_LIMIT  32 // Toolarm limit switch
+#define TOOLARM_DIR    1 // Toolhead driver Direction
+#define TOOLARM_STEP   3 // Toolhead driver Step
+#define TOOLARM_EN     4 // Toolhead driver Enable
+#define TOOLARM_LIMIT  2 // Toolarm limit switch
 
 // Emergency shut off pin
-#define E_STOP 34 // Emengency shut off
+#define E_STOP 15 // Emengency shut off
 
 class Layer{
     // Information not accessible outside the Layer class
@@ -105,7 +105,7 @@ class Layer{
 };
 
 // Array of pointers to store the data for each layer from the UI
-const int maxLayers = 5;    // Maximum layers the machine can handle (subject to change)
+const int maxLayers = 10;    // Maximum layers the machine can handle (subject to change)
 int totalLayers = 0;        // Number of layers recieved from the UI
 int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects (chat gave me this idk how pointers work)
@@ -183,6 +183,14 @@ void setup() {
     pinMode(TOOLARM_LIMIT, INPUT_PULLUP);
     pinMode(E_STOP, INPUT);
 
+    // Initialize Motors and Switches
+    digitalWrite(MANDREL_EN, LOW);
+    digitalWrite(CARRIAGE_EN, LOW);
+    digitalWrite(MANDREL_DIR, LOW);
+    digitalWrite(CARRIAGE_DIR, HIGH);
+    digitalWrite(TOOLHEAD_EN, LOW);
+    digitalWrite(TOOLHEAD_DIR, LOW);
+
     // Set speeds and accelerations
     mandrel.setMaxSpeed(2000);
     mandrel.setSpeed(1000);
@@ -194,7 +202,7 @@ void setup() {
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(50.0, 1.0, 0.0, 2.0, 180.0, 55.0);
+    LayerFromUI(50.0, 45.0, 0.0, 2.0, 180.0, 55.0);
     
     // Set global mandrel diameter (mm)
     manD = 55.0;

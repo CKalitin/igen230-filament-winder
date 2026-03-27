@@ -1,19 +1,18 @@
 #include <Arduino.h>
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
+#include <ArduinoJson.h>
 
-// Mandrel pins
-#define MANDREL_STEP   18 // Mandrel driver Step
-#define MANDREL_DIR    19 // Mandrel driver Direction
-#define MANDREL_EN     21  // Mandrel driver Enable
+// Pin definitions
+#define MANDREL_STEP   25  // Mandrel driver Step
+#define MANDREL_DIR    26 // Mandrel driver Direction
+#define CARRIAGE_STEP  14 // Carriage driver Step
+#define CARRIAGE_DIR   12 // Carriage driver Direction
 
-// Carriage pins
-#define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_DIR   17 // Carriage driver Direction
-#define CARRIAGE_EN    5 // Carriage driver Enable
-#define CARRIAGE_LIMIT 35 // Carriage limit switch
+#define MANDREL_EN     27  // Mandrel driver Enable
+#define CARRIAGE_EN    33 // Carriage driver Enable
 
-// Emergency shut off pin
-#define E_STOP         13 // Emengency shut off
+#define CARRIAGE_LIMIT 22 // Carriage limit switch
+#define E_STOP         23 // Emengency shut off
 
 class Layer{
     // Information not accessible outside the Layer class
@@ -182,12 +181,63 @@ void setup() {
     carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
 
-    // Manually add a test layer (since UI isn't connected yet)
-    // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(50.0, 1.0, 0.0, 2.0, 180.0, 55.0);
-    
-    // Set global mandrel diameter (mm)
-    manD = 55.0;
+    if (Serial.available() > 0) {
+        JsonDocument doc;
+
+        // Attempt to parse
+        DeserializationError error = deserializeJson(doc, Serial);
+        if (error) return;
+
+        // Extract global job settings
+        int diameter = doc["mandrel_diameter"] | 0;
+        int axesCount = doc["axes"] | 2; // Default to 2 if not specified
+        
+        Serial.print("STATE: RECEIVED JOB | DIAMETER: ");
+        Serial.print(diameter);
+        Serial.print("MM | AXES: ");
+        Serial.println(axesCount);
+
+        // (Optional) Logic based on axes count
+        if (axesCount == 2) {
+            Serial.println("STATE: 2-Axis Winding");
+        } else if (axesCount == 3) {
+            Serial.println("STATE: 3-Axis Winding");
+        } else if (axesCount == 4) {
+            Serial.println("STATE: 4-Axis Winding");
+        }
+
+        // Iterate through the layers
+        JsonArray layers = doc["layers"];
+        int layerCount = 0;
+
+        for (JsonObject layer : layers) {
+            layerCount++;
+            
+            // Extract the parameters
+            float angle = layer["angle"];
+            float length = layer["length"];
+            float stepover = layer["stepover"];
+            int dwell = layer["dwell"] | 0; // Default to 0 if not provided
+
+            // Print a detailed breakdown to the UI Serial Log
+            Serial.print("STATE: > LAYER ");
+            Serial.print(layerCount);
+            Serial.print(" | Angle: ");
+            Serial.print(angle);
+            Serial.print(" | Len: ");
+            Serial.print(length);
+            Serial.print("mm | Step: ");
+            Serial.print(stepover);
+            Serial.print("mm | Dwell: ");
+            Serial.println(dwell);
+            
+            delay(500); // Simulation delay
+        }
+
+        // Finalize the job
+        Serial.println("STATE: JOB FINISHED");
+        Serial.println("READY"); // Tells the UI the machine is idle and ok to send more
+    }
 
     // Enter Zeroing state on startup
     currentState = ZEROING;
