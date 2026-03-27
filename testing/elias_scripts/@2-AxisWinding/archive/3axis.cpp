@@ -55,6 +55,17 @@ float windAngle = 45.0;
 float layerLength = 50.0;
 bool goingForward = true;
 
+// State machine
+enum State {
+    ZEROING_CARRIAGE,
+    ZEROING_TOOLHEAD,
+    POSITIONING_TOOLHEAD,
+    WINDING,
+    FINISHED
+};
+
+State currentState = ZEROING_TOOLHEAD;
+
 float getStepRatio() {
     float safeAngle = windAngle;
     if (safeAngle > 89.0) safeAngle = 89.9;
@@ -93,91 +104,147 @@ void setup() {
     digitalWrite(TOOLHEAD_EN, LOW);
     digitalWrite(TOOLARM_EN, LOW);
 
-    // Mandrel runs at constant speed
-    mandrel.setMaxSpeed(2000);
-    mandrel.setSpeed(1000);
+    // Mandrel: 2.5x speed (was 1000, now 2500)
+    mandrel.setMaxSpeed(5000);
+    mandrel.setSpeed(2500);
 
-    // Carriage uses acceleration-based movement
-    carriage.setMaxSpeed(2000);
+    // Carriage: raised max to keep up with faster mandrel
+    carriage.setMaxSpeed(5000);
     carriage.setAcceleration(5000);
 
-    // Toolhead uses acceleration-based movement
+    // Toolhead
     toolhead.setMaxSpeed(2000);
     toolhead.setAcceleration(3000);
 
-    // Move toolhead to starting angle
-    long toolheadTarget = (long)((windAngle / 360.0) * toolheadStepsPerRev);
-    toolhead.moveTo(toolheadTarget);
-    while (toolhead.distanceToGo() != 0) {
-        toolhead.run();
-    }
-
-    // Set initial mandrel position reference
-    lastManStep = mandrel.currentPosition();
-
-    Serial.println("Setup complete. Starting winding test.");
-    Serial.printf("Step ratio: %.4f\n", getStepRatio());
-    Serial.printf("StepsPerMM: %.2f  StepsPerRev: %.2f\n", stepsPerMM, stepsPerRev);
-
-    delay(2000);
+    Serial.println("Starting zeroing sequence...");
 }
 
 void loop() {
-    float ratio = getStepRatio();
+    switch (currentState) {
 
-    // Step the mandrel at constant speed
-    mandrel.runSpeed();
+        case ZEROING_CARRIAGE: {
+            carriage.setSpeed(-600);
+            carriage.runSpeed();
 
-    // Electronic gearing: sync carriage to mandrel
-    long stepNow = mandrel.currentPosition();
+            if (digitalRead(CARRIAGE_LIMIT) == LOW) {
+                carriage.setSpeed(0);
+                delay(200);
 
-    if (stepNow != lastManStep) {
-        long delta = stepNow - lastManStep;
-        lastManStep = stepNow;
+                // Back off the switch
+                carriage.setCurrentPosition(0);
+                carriage.moveTo(200);
+                while (carriage.distanceToGo() != 0) carriage.run();
+                carriage.setCurrentPosition(0);
 
-        float moveSign = goingForward ? 1.0 : -1.0;
-        carAccumulator += (delta * ratio * moveSign);
-
-        if (abs(carAccumulator) >= 1.0) {
-            long numStep = (long)carAccumulator;
-            carriage.move(numStep);
-            carAccumulator -= numStep;
+                Serial.println("Carriage zeroed.");
+                currentState = ZEROING_TOOLHEAD;
+            }
+            break;
         }
-    }
 
-    carriage.run();
+        case ZEROING_TOOLHEAD: {
+            // Slowly rotate toolhead toward limit switch
+            toolhead.setSpeed(-400);
+            toolhead.runSpeed();
 
-    // Check end of pass
-    float currentPosMM = carriage.currentPosition() / stepsPerMM;
-    float target = goingForward ? layerLength : 0.0;
+            if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
+                toolhead.setSpeed(0);
+                delay(200);
 
-    bool passComplete = false;
-    if (goingForward && currentPosMM >= target) passComplete = true;
-    if (!goingForward && currentPosMM <= target) passComplete = true;
+                // Set this as the toolhead zero reference
+                toolhead.setCurrentPosition(0);
 
-    if (passComplete) {
-        goingForward = !goingForward;
+                Serial.println("Toolhead zeroed.");
+                currentState = POSITIONING_TOOLHEAD;
+            }
+            break;
+        }
 
-        // Flip toolhead angle
-        float toolheadAngle = goingForward ? windAngle : -windAngle;
-        long toolheadTarget = (long)((toolheadAngle / 360.0) * toolheadStepsPerRev);
-        toolhead.moveTo(toolheadTarget);
-        while (toolhead.distanceToGo() != 0) {
+        case POSITIONING_TOOLHEAD: {
+            // Move toolhead to the starting winding angle
+            long firstTarget = (long)((windAngle / 360.0) * toolheadStepsPerRev);
+            toolhead.moveTo(firstTarget);
             toolhead.run();
-            mandrel.runSpeed();  // Keep mandrel spinning during toolhead flip
+
+            if (toolhead.distanceToGo() == 0) {
+                lastManStep = mandrel.currentPosition();
+                Serial.println("Toolhead positioned. Starting winding in 2 seconds...");
+                Serial.printf("Step ratio: %.4f\n", getStepRatio());
+                Serial.printf("StepsPerMM: %.2f  StepsPerRev: %.2f\n", stepsPerMM, stepsPerRev);
+                Serial.printf("Toolhead target: %ld steps\n", firstTarget);
+                delay(2000);
+                currentState = WINDING;
+            }
+            break;
         }
 
-        lastManStep = mandrel.currentPosition();
-        Serial.printf("Pass complete. CarPos: %.2f mm  Direction: %s\n",
-            currentPosMM, goingForward ? "FWD" : "REV");
-    }
+        case WINDING: {
+            float ratio = getStepRatio();
 
-    // Debug output every 5000 mandrel steps
-    static long lastDebug = 0;
-    if (stepNow - lastDebug > 5000) {
-        lastDebug = stepNow;
-        Serial.printf("manPos: %ld  carPos: %ld  carMM: %.2f  dir: %s\n",
-            stepNow, carriage.currentPosition(), currentPosMM,
-            goingForward ? "FWD" : "REV");
+            // Step the mandrel at constant speed
+            mandrel.runSpeed();
+
+            // Electronic gearing: sync carriage to mandrel
+            long stepNow = mandrel.currentPosition();
+
+            if (stepNow != lastManStep) {
+                long delta = stepNow - lastManStep;
+                lastManStep = stepNow;
+
+                float moveSign = goingForward ? 1.0 : -1.0;
+                carAccumulator += (delta * ratio * moveSign);
+
+                if (abs(carAccumulator) >= 1.0) {
+                    long numStep = (long)carAccumulator;
+                    carriage.move(numStep);
+                    carAccumulator -= numStep;
+                }
+            }
+
+            carriage.run();
+
+            // Check end of pass
+            float currentPosMM = carriage.currentPosition() / stepsPerMM;
+            float target = goingForward ? layerLength : 0.0;
+
+            bool passComplete = false;
+            if (goingForward && currentPosMM >= target) passComplete = true;
+            if (!goingForward && currentPosMM <= target) passComplete = true;
+
+            if (passComplete) {
+                goingForward = !goingForward;
+
+                // Flip toolhead to new angle
+                float toolheadAngle = goingForward ? windAngle : -windAngle;
+                long toolheadTarget = (long)((toolheadAngle / 360.0) * toolheadStepsPerRev);
+                toolhead.moveTo(toolheadTarget);
+                while (toolhead.distanceToGo() != 0) {
+                    toolhead.run();
+                    mandrel.runSpeed();  // Keep mandrel spinning during flip
+                }
+
+                lastManStep = mandrel.currentPosition();
+                Serial.printf("Pass complete. CarPos: %.2f mm  Direction: %s\n",
+                    currentPosMM, goingForward ? "FWD" : "REV");
+            }
+
+            // Debug output every 5000 mandrel steps
+            static long lastDebug = 0;
+            if (stepNow - lastDebug > 5000) {
+                lastDebug = stepNow;
+                Serial.printf("manPos: %ld  carPos: %ld  carMM: %.2f  dir: %s\n",
+                    stepNow, carriage.currentPosition(), currentPosMM,
+                    goingForward ? "FWD" : "REV");
+            }
+            break;
+        }
+
+        case FINISHED: {
+            mandrel.setSpeed(0);
+            carriage.setSpeed(0);
+            Serial.println("Winding complete.");
+            while (true) { delay(1000); }
+            break;
+        }
     }
 }
