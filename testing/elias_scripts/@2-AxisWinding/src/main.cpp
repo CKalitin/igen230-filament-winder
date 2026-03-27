@@ -237,6 +237,7 @@ void loop() {
     switch (currentState) {
 
         case PAUSED: {
+          Serial.println("PAUSED");
 
             // Stop all motion
             mandrel.setSpeed(0);
@@ -248,6 +249,7 @@ void loop() {
         }
 
         case ZEROING: {
+            Serial.println("ZEROING");
             previousState = currentState;
 
             // Zero the carriage
@@ -296,6 +298,7 @@ void loop() {
         }
 
         case MOVING: {
+            Serial.println("MOVING");
             previousState = currentState;
 
             // Get needed information from the Layer class
@@ -340,6 +343,7 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
+            Serial.println("DWELLING");
             previousState = currentState;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
@@ -371,6 +375,7 @@ void loop() {
         }
 
         case FINISHED: {
+            Serial.println("FINISHED");
             previousState = currentState;
 
             // Move on to the next layer in the array if there is one
