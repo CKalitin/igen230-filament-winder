@@ -2,21 +2,21 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    13 // Mandrel driver Direction
-#define MANDREL_STEP   23 // Mandrel driver Step
-#define MANDREL_EN     22  // Mandrel driver Enable
+#define MANDREL_DIR    14 // Mandrel driver Direction
+#define MANDREL_STEP   12 // Mandrel driver Step
+#define MANDREL_EN     27 // Mandrel driver Enable
 
 // Carriage pins
 #define CARRIAGE_DIR   17 // Carriage driver Direction
 #define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    5 // Carriage driver Enable
+#define CARRIAGE_EN    5  // Carriage driver Enable
 #define CARRIAGE_LIMIT 35 // Carriage limit switch
 
 // Toolhead pins
-#define TOOLHEAD_DIR   21 // Toolhead driver Direction
-#define TOOLHEAD_STEP  22 // Toolhead driver Step
-#define TOOLHEAD_EN    23 // Toolhead driver Enable
-#define TOOLHEAD_LIMIT 19 // Toolhead limit switch
+#define TOOLHEAD_DIR   19 // Toolhead driver Direction
+#define TOOLHEAD_STEP  18 // Toolhead driver Step
+#define TOOLHEAD_EN    21 // Toolhead driver Enable
+#define TOOLHEAD_LIMIT 32 // Toolhead limit switch
 
 // Emergency shut off pin
 #define E_STOP 15 // Emengency shut off

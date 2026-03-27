@@ -2,13 +2,13 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_STEP   18 // Mandrel driver Step
 #define MANDREL_DIR    19 // Mandrel driver Direction
+#define MANDREL_STEP   18 // Mandrel driver Step
 #define MANDREL_EN     21  // Mandrel driver Enable
 
 // Carriage pins
-#define CARRIAGE_STEP  16 // Carriage driver Step
 #define CARRIAGE_DIR   17 // Carriage driver Direction
+#define CARRIAGE_STEP  16 // Carriage driver Step
 #define CARRIAGE_EN    5 // Carriage driver Enable
 #define CARRIAGE_LIMIT 35 // Carriage limit switch
 
