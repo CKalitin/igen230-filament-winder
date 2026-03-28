@@ -2,9 +2,9 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    19 // Mandrel driver Direction
-#define MANDREL_STEP   18 // Mandrel driver Step
-#define MANDREL_EN     21  // Mandrel driver Enable
+#define MANDREL_DIR    14 // Mandrel driver Direction
+#define MANDREL_STEP   12 // Mandrel driver Step
+#define MANDREL_EN     27  // Mandrel driver Enable
 
 // Carriage pins
 #define CARRIAGE_DIR   17 // Carriage driver Direction
@@ -178,13 +178,12 @@ void setup() {
     // Set speeds and accelerations
     mandrel.setMaxSpeed(2000);
     mandrel.setSpeed(1000);
-    carriage.setMaxSpeed(2000);
+    carriage.setMaxSpeed(4000);
     carriage.setAcceleration(5000);
-    carriage.setSpeed(1000);
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(250.0, 1.0, 0.0, 2.0, 180.0, 55.0);
+    LayerFromUI(400.0, 90.0, 0.0, 4.0, 180.0, 55.0);
     
     // Set global mandrel diameter (mm)
     manD = 55.0;
@@ -215,22 +214,16 @@ void loop() {
         case ZEROING: {
             // previousSate = currentState;
 
-            carriage.setSpeed(-600); // Slowly move to limit switch
+            carriage.setSpeed(-800); // Slowly move to limit switch
             carriage.runSpeed();
 
-            if (digitalRead(CARRIAGE_LIMIT) == LOW) {    // Check if limit switch is active
+            if (digitalRead(CARRIAGE_LIMIT) == HIGH) {   // Check if limit switch is active
                 carriage.stop();                         // Stop motion
-                delay(200);                              // Wait half a second
-
-                // carriage.move(200);
-                // carriage.setSpeed(600);
-                // while (carriage.distanceToGo() != 0) {
-                //    carriage.runSpeed();
-                // }
+                delay(500);                              // Wait half a second
 
                 // Temporarily set the carriage zero/home and move away from the limit switch a bit
                 carriage.setCurrentPosition(0);
-                carriage.moveTo(200); 
+                carriage.moveTo(1000);
                 while (carriage.distanceToGo() != 0) {
                     carriage.run();   
                 }
@@ -245,30 +238,26 @@ void loop() {
         }
 
         case MOVING: {
-            // previousSate = currentState;
+            previousSate = currentState;
 
             // Get needed information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
             float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
-
-            // Electronic Gearing (Sync carriage to mandrel)
-            mandrel.runSpeed();                         // Rotate mandrel at prior defined constant speed
-            long stepNow = mandrel.currentPosition();   // Store the mandrels current position through step count
+            float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;
             
-            if (stepNow != lastManStep) {           // Check if a step is due
-                long delta = stepNow - lastManStep; // Number of steps mandrel moved since last check
-                lastManStep = stepNow;              // Update the previous step
+            const float maxCarriageSteps = 4000.0;  // Safe carriage step limit
 
-                float moveSign = (activeLayer->isGoingForward()) ? 1.0 : -1.0;  // Check direction (moveSign is 1.0 if forward and -1.0 if backward)
-                carAccumulator = carAccumulator + (delta * ratio * moveSign);   // Add ratio to accumulator (Layer class handles direction)
+            // Scale mandrel speed down if carriage would exceed limit
+            float safeMandelSpeed = min(1000.0f, maxCarriageSteps / ratio);
+            mandrel.setSpeed(safeMandelSpeed);
 
-                if (abs(carAccumulator) >= 1.0) {  // Check if carriage has accumulated a full step
-                    long numStep = (long)carAccumulator;        // Store number of accumulated steps to nearest integer
-                    carriage.move(numStep);                     // Move the carriage numStep steps
-                    carAccumulator = carAccumulator - numStep;  // Subtract steps taken from accumulator
-                }
-            }
-            carriage.run(); // Move carriage one step
+            // Set carriage speed proportional to mandrel speed
+            float carriageSpeed = safeMandelSpeed * ratio * moveSign;
+            carriage.setSpeed(carriageSpeed);
+            
+            // Run both motors
+            mandrel.runSpeed();
+            carriage.runSpeed();
 
             // Check for End of Pass
             float currentPosMM = carriage.currentPosition() / stepsPerMM;   // Convert position in steps to mm

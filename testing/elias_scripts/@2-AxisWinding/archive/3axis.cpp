@@ -83,7 +83,7 @@ class Layer{
         // Returns the toolhead position in steps for a given direction
         // Forward pass: fiber feeds at +angle, reverse pass: fiber feeds at -angle
         long getToolheadTarget(bool goingForward, float stepsPerRev) const {
-            float toolheadAngle = goingForward ? _angle : -_angle;  // Flip sign on direction change
+            float toolheadAngle = goingForward ? -_angle : _angle;  // Flip sign on direction change
             return (long)((toolheadAngle / 360.0) * stepsPerRev);
         }
 
@@ -148,6 +148,7 @@ long dwellTargetStep;   // Number of extra steps mandrel must move at end of a p
 bool toolheadFlipDone = false;  // Tracks whether toolhead has finished flipping
 bool carriageZeroed = false;
 bool toolheadZeroed = false;
+bool windingOver = false;
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
@@ -188,15 +189,14 @@ void setup() {
     // Set speeds and accelerations
     mandrel.setMaxSpeed(2000);
     mandrel.setSpeed(1000);
-    carriage.setMaxSpeed(2000);
+    carriage.setMaxSpeed(4000);
     carriage.setAcceleration(5000);
-    carriage.setSpeed(1000);
     toolhead.setMaxSpeed(2000);
     toolhead.setAcceleration(3000);
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(50.0, 45.0, 0.0, 2.0, 180.0, 55.0);
+    LayerFromUI(250.0, 30.0, 0.0, 5.0, 180.0, 55.0);
     
     // Set global mandrel diameter (mm)
     manD = 55.0;
@@ -244,17 +244,18 @@ void loop() {
 
             // Zero the carriage
             if (!carriageZeroed) {
-                carriage.setSpeed(-600);
+                carriage.setSpeed(-800);
                 carriage.runSpeed();
 
-                if (digitalRead(CARRIAGE_LIMIT) == LOW) {
+                if (digitalRead(CARRIAGE_LIMIT) == HIGH) {
                     carriage.stop();
                     delay(200);
+
                     carriage.setCurrentPosition(0);
-                    carriage.moveTo(200);
+                    carriage.moveTo(1000);
                     while (carriage.distanceToGo() != 0) carriage.run();
-                    carriage.setCurrentPosition(0);
-                    carriageZeroed = true;
+                      carriage.setCurrentPosition(0);
+                      carriageZeroed = true;
                 }
             }
 
@@ -263,7 +264,7 @@ void loop() {
                 toolhead.setSpeed(-400);
                 toolhead.runSpeed();
 
-                if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
+                if (digitalRead(TOOLHEAD_LIMIT) == HIGH) {
                     toolhead.stop();
                     delay(200);
                     toolhead.setCurrentPosition(0);
@@ -293,25 +294,22 @@ void loop() {
             // Get needed information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
             float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
-
-            // Electronic Gearing (Sync carriage to mandrel)
-            mandrel.runSpeed();                         // Rotate mandrel at prior defined constant speed
-            long stepNow = mandrel.currentPosition();   // Store the mandrels current position through step count
+            float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;
             
-            if (stepNow != lastManStep) {           // Check if a step is due
-                long delta = stepNow - lastManStep; // Number of steps mandrel moved since last check
-                lastManStep = stepNow;              // Update the previous step
+            const float maxCarriageSteps = 4000.0;  // Safe carriage step limit
 
-                float moveSign = (activeLayer->isGoingForward()) ? 1.0 : -1.0;  // Check direction (moveSign is 1.0 if forward and -1.0 if backward)
-                carAccumulator = carAccumulator + (delta * ratio * moveSign);   // Add ratio to accumulator (Layer class handles direction)
+            // Scale mandrel speed down if carriage would exceed limit
+            float safeMandelSpeed = min(1000.0f, maxCarriageSteps / ratio);
+            mandrel.setSpeed(safeMandelSpeed);
 
-                if (abs(carAccumulator) >= 1.0) {  // Check if carriage has accumulated a full step
-                    long numStep = (long)carAccumulator;        // Store number of accumulated steps to nearest integer
-                    carriage.move(numStep);                     // Move the carriage numStep steps
-                    carAccumulator = carAccumulator - numStep;  // Subtract steps taken from accumulator
-                }
-            }
-            carriage.run(); // Move carriage one step
+            // Set carriage speed proportional to mandrel speed
+            float carriageSpeed = safeMandelSpeed * ratio * moveSign;
+            carriage.setSpeed(carriageSpeed);
+            
+            // Run both motors
+            mandrel.runSpeed();
+            carriage.runSpeed();
+
 
             // Check for End of Pass
             float currentPosMM = carriage.currentPosition() / stepsPerMM;   // Convert position in steps to mm
@@ -363,6 +361,7 @@ void loop() {
                     lastManStep = mandrel.currentPosition(); // Update mandrel position before resuming
                     currentState = MOVING;
                 }
+                toolheadFlipDone = false;
             }
             break;  // Exit Dwell state
         }
@@ -383,11 +382,14 @@ void loop() {
             }
             else {
                 // All layers from the UI are done
+                windingOver = true;
                 mandrel.setSpeed(0);
                 carriage.setSpeed(0);
                 // Need to send a signal back to the UI
-
-                Serial.println("All layers complete. Winding over");
+                
+                if(!windingOver) {
+                    Serial.println("All layers complete. Winding over");
+                }
             }
             break;  // Exit Finished state
         }
