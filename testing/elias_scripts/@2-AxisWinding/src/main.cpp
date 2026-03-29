@@ -7,15 +7,15 @@
 #define MANDREL_EN     27 // Mandrel driver Enable
 
 // Carriage pins
-#define CARRIAGE_DIR   17 // Carriage driver Direction
-#define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    5  // Carriage driver Enable
+#define CARRIAGE_DIR   19 // Carriage driver Direction
+#define CARRIAGE_STEP  18 // Carriage driver Step
+#define CARRIAGE_EN    21  // Carriage driver Enable
 #define CARRIAGE_LIMIT 35 // Carriage limit switch
 
 // Toolhead pins
-#define TOOLHEAD_DIR   19 // Toolhead driver Direction
-#define TOOLHEAD_STEP  18 // Toolhead driver Step
-#define TOOLHEAD_EN    21 // Toolhead driver Enable
+#define TOOLHEAD_DIR   17 // Toolhead driver Direction
+#define TOOLHEAD_STEP  16 // Toolhead driver Step
+#define TOOLHEAD_EN    5  // Toolhead driver Enable
 #define TOOLHEAD_LIMIT 32 // Toolhead limit switch
 
 // Emergency shut off pin
@@ -196,7 +196,7 @@ void setup() {
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(250.0, 30.0, 0.0, 5.0, 180.0, 55.0);
+    LayerFromUI(500.0, 45.0, 100.0, 3.0, 180.0, 55.0);
     
     // Set global mandrel diameter (mm)
     manD = 55.0;
@@ -382,14 +382,11 @@ void loop() {
             }
             else {
                 // All layers from the UI are done
-                windingOver = true;
                 mandrel.setSpeed(0);
                 carriage.setSpeed(0);
                 // Need to send a signal back to the UI
                 
-                if(!windingOver) {
-                    Serial.println("All layers complete. Winding over");
-                }
+                Serial.println("All layers complete. Winding over");
             }
             break;  // Exit Finished state
         }
