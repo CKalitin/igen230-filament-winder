@@ -2,14 +2,14 @@
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
 // Mandrel pins
-#define MANDREL_DIR    14 // Mandrel driver Direction
-#define MANDREL_STEP   12 // Mandrel driver Step
-#define MANDREL_EN     27  // Mandrel driver Enable
+#define MANDREL_DIR    19 // Mandrel driver Direction
+#define MANDREL_STEP   18 // Mandrel driver Step
+#define MANDREL_EN     21  // Mandrel driver Enable
 
 // Carriage pins
 #define CARRIAGE_DIR   17 // Carriage driver Direction
 #define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    5 // Carriage driver Enable
+#define CARRIAGE_EN    5  // Carriage driver Enable
 #define CARRIAGE_LIMIT 35 // Carriage limit switch
 
 // Emergency shut off pin
@@ -40,15 +40,16 @@ class Layer{
                 float angleRad = radians(safeAngle);       // Convert to radians for calculations
 
                 float circ = PI * manD; // Calculate cicumference
-                float calcPasses = (circ * cos(angleRad)) / _stepover;  // Calculate passes needed for 100% coverage
-                _pass = (int)ceil(calcPasses);
-                if (_pass % 2 != 0) _pass++;    // Round up to the nearest EVEN integer so carriage returns to start
+                float calcPasses = (_length * cos(angleRad)) / _stepover;  // Calculate passes needed for 100% coverage
+                _pass = ((int)ceil(calcPasses) * 2) + 1;
             }
 
         // GETTERS: Read-only access
         float getLength() const { return _length; }
         float getAngle()  const { return _angle; }
+        float getOffset() const { return _offset; }
         float getDwell()  const { return _dwell; }
+        int getPassDone() const { return _passDone; }
 
         // MATH: Calculates step Ratio for the layer
         float getStepRatio(float manD, float stepsPerMM, float stepsPerRev) const {
@@ -129,7 +130,7 @@ enum windingState {
 };
 
 windingState currentState = PAUSED; // Paused on statup, no motion
-windingState previousSate;          // Tracks last active state in case of E-Stop or pause
+windingState previousState;          // Tracks last active state in case of E-Stop or pause
 
 // Harware Variables (Subject to change)
 const float Pitch = 2.0;      // Belt pitch (in mm)
@@ -183,10 +184,10 @@ void setup() {
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(400.0, 90.0, 0.0, 4.0, 180.0, 55.0);
+    LayerFromUI(230.0, 70.0, 0.0, 4.0, 180.0, 79.0);
     
     // Set global mandrel diameter (mm)
-    manD = 55.0;
+    manD = 79.0;
 
     // Enter Zeroing state on startup
     currentState = ZEROING;
@@ -205,7 +206,7 @@ void loop() {
         case PAUSED: {
 
             if (digitalRead(E_STOP) == HIGH) {
-                currentState = previousSate;
+                currentState = previousState;
             }
 
             break;  // Motors held in position, waiting for UI command to start or zero
@@ -223,7 +224,7 @@ void loop() {
 
                 // Temporarily set the carriage zero/home and move away from the limit switch a bit
                 carriage.setCurrentPosition(0);
-                carriage.moveTo(1000);
+                carriage.moveTo(6600);
                 while (carriage.distanceToGo() != 0) {
                     carriage.run();   
                 }
@@ -238,7 +239,13 @@ void loop() {
         }
 
         case MOVING: {
-            previousSate = currentState;
+
+            //Increment pass
+             if (previousState == DWELLING) {
+                activeLayer->countPass();
+            }
+
+            previousState = currentState;
 
             // Get needed information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
@@ -264,7 +271,7 @@ void loop() {
 
             // Enter Dwell state if the carriage has reached the end of a pass
             if (activeLayer->isGoingForward() && currentPosMM >= target) currentState = DWELLING;  
-            if (!activeLayer->isGoingForward() && currentPosMM <= target) currentState = DWELLING;  
+            if (!activeLayer->isGoingForward() && currentPosMM <= target) currentState = DWELLING;
 
             // Prepare Dwell if direction just switched
             if (currentState == DWELLING) {
@@ -278,7 +285,7 @@ void loop() {
         }
 
         case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
-            previousSate = currentState;
+            previousState = currentState;
 
             // Cancel any queued carriage motion
             carriage.stop();                                         
@@ -288,8 +295,6 @@ void loop() {
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
             if (mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
-                activeLayer->countPass();     // Increment pass and flip direction
-
                 if (activeLayer->isDone()) {  // Check if layer is finished and update current state
                     currentState = FINISHED;
                 }
@@ -303,7 +308,7 @@ void loop() {
         }
 
         case FINISHED: {
-            // previousSate = currentState;
+            // previousState = currentState;
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
