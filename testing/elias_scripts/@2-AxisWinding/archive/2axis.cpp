@@ -184,7 +184,7 @@ void setup() {
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(230.0, 70.0, 0.0, 4.0, 180.0, 79.0);
+    LayerFromUI(230.0, 60.0, 0.0, 4.0, 180.0, 79.0);
     
     // Set global mandrel diameter (mm)
     manD = 79.0;
