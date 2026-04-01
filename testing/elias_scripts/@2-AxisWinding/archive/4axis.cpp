@@ -1,31 +1,31 @@
 #include <Arduino.h>
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
 
-// Mandrel pins
-#define MANDREL_DIR    12 // Mandrel driver Direction
-#define MANDREL_STEP   13 // Mandrel driver Step
-#define MANDREL_EN     14 // Mandrel driver Enable
+/// Mandrel pins
+#define MANDREL_DIR    19
+#define MANDREL_STEP   18
+#define MANDREL_EN     21
 
 // Carriage pins
-#define CARRIAGE_DIR   15 // Carriage driver Direction
-#define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    17 // Carriage driver Enable
-#define CARRIAGE_LIMIT 18 // Carriage limit switch
+#define CARRIAGE_DIR   17
+#define CARRIAGE_STEP  16
+#define CARRIAGE_EN    5
+#define CARRIAGE_LIMIT 35
 
 // Toolhead pins
-#define TOOLHEAD_DIR   21 // Toolhead driver Direction
-#define TOOLHEAD_STEP  22 // Toolhead driver Step
-#define TOOLHEAD_EN    23 // Toolhead driver Enable
-#define TOOLHEAD_LIMIT 19 // Toolhead limit switch
+#define TOOLHEAD_DIR   14
+#define TOOLHEAD_STEP  12
+#define TOOLHEAD_EN    27
+#define TOOLHEAD_LIMIT 34
 
 // Toolarm pins
-#define TOOLARM_DIR    25 // Toolhead driver Direction
-#define TOOLARM_STEP   26 // Toolhead driver Step
-#define TOOLARM_EN     27 // Toolhead driver Enable
-#define TOOLARM_LIMIT  32 // Toolarm limit switch
+#define TOOLARM_DIR    25 
+#define TOOLARM_STEP   26
+#define TOOLARM_EN     33
+#define TOOLARM_LIMIT  32
 
-// Emergency shut off pin
-#define E_STOP 34 // Emengency shut off
+// Emergency stop pin
+#define E_STOP 15
 
 class SplineProfile {
     private:
