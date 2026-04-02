@@ -1,30 +1,31 @@
 #include <Arduino.h>
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
+#include <ArduinoJson.h>
 
-// Mandrel pins
-#define MANDREL_DIR    19
-#define MANDREL_STEP   18
-#define MANDREL_EN     21
-
-// Carriage pins
+// Carriage pins (Motor 1 on PCB)
 #define CARRIAGE_DIR   17
 #define CARRIAGE_STEP  16
 #define CARRIAGE_EN    5
-#define CARRIAGE_LIMIT 35
+#define CARRIAGE_LIMIT 35   // Limit switch 1 (on PCB)
 
-// Toolhead pins
+// Mandrel pins (Motor 2 on PCB)
+#define MANDREL_DIR    19   
+#define MANDREL_STEP   18
+#define MANDREL_EN     21
+
+// Toolhead pins (Motor 3 on PCB)
 #define TOOLHEAD_DIR   14
 #define TOOLHEAD_STEP  12
 #define TOOLHEAD_EN    27
 
-// Toolarm pins
+// Toolarm pins (Motor 4 on PCB)
 #define TOOLARM_DIR    25 
 #define TOOLARM_STEP   26
 #define TOOLARM_EN     33
-#define TOOLARM_LIMIT  32
+#define TOOLARM_LIMIT  32   // Limit switch 2 (on PCB)
 
 // Emergency stop pin
-#define E_STOP 15
+#define E_STOP         13
 
 class SplineProfile {
     private:
@@ -192,8 +193,8 @@ class Layer{
 SplineProfile toolarmProfile;  // Global profile instance
 
 // Array of pointers to store the data for each layer from the UI
-const int maxLayers = 5;    // Maximum layers the machine can handle (subject to change)
-int totalLayers = 0;        // Number of layers recieved from the UI
+const int maxLayers  = 5;   // Maximum layers the machine can handle (subject to change)
+int totalLayers      = 0;   // Number of layers recieved from the UI
 int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects
 
@@ -206,24 +207,24 @@ enum windingState {
     FINISHED    // Carriage and mandrel stopped
 };
 
-windingState currentState = PAUSED;  // Paused on statup, no motion
-windingState previousState = PAUSED; // Tracks last active state in case of E-Stop or pause
+windingState currentState  = PAUSED;    // Paused on statup, no motion
+windingState previousState = PAUSED;    // Tracks last active state in case of E-Stop or pause
 
 // Harware Constants
-const float Pitch       = 2.0; // Belt pitch (in mm)
-const int motorSteps    = 200; // Number of steps motor makes per revolution
-const int microsteps    = 16;  // Not Sure about this, ask Loki
-const int motorTeeth    = 20;  // Number of pulley teeth on motor pulleys
-const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
-const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
-const int toolheadTeeth = 60;  // Number of pulley teeth on toolhead pulley
-const int toolarmPitch  = 3;   // mm per revolution
-const int toolarmZero   = 120; // Physical distance from mandrel axis at position 0 (mm)
+const float Pitch       = 2.0;  // Belt pitch (in mm)
+const int motorSteps    = 200;  // Number of steps motor makes per revolution
+const int microsteps    = 16;   // Not Sure about this, ask Loki
+const int motorTeeth    = 20;   // Number of pulley teeth on motor pulleys
+const int carTeeth      = 20;   // Number of pulley teeth on carriage pulley
+const int manTeeth      = 20;   // Number of pulley teeth on mandrel pulley
+const int toolheadTeeth = 60;   // Number of pulley teeth on toolhead pulley
+const int toolarmPitch  = 3;    // mm per revolution
+const int toolarmZero   = 120;  // Physical distance from mandrel axis to the toolarm at position 0 (mm)
 
-const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
-const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required carriage steps per mandrel step
-const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
-const float toolarmStepsPerMM = (motorSteps * microsteps) / toolarmPitch;                         // Toolarm steps per mm
+const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                   // Carriage steps per mm moved
+const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);       // Required carriage steps per mandrel step
+const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);    // Steps for one full toolhead rotation
+const float toolarmStepsPerMM   = (motorSteps * microsteps) / toolarmPitch;                         // Toolarm steps per mm
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)
@@ -232,9 +233,9 @@ float manD;   // Mandrel Diameter (mm)
 long lastManStep;              // Stores previous loop's mandrel position
 long dwellTargetStep;          // Number of extra steps mandrel must move at end of a pass
 bool toolheadFlipped = false;  // Tracks whether toolhead has finished flipping
-bool carriageZeroed = false;   // Tracks if the carriage has zeroed
-bool toolheadZeroed = false;   // Tracks if the toolhead has zeroed
-bool toolarmZeroed = false;    // Tracks if the toolarm has zeroed
+bool carriageZeroed  = false;  // Tracks if the carriage has zeroed
+bool toolheadZeroed  = false;  // Tracks if the toolhead has zeroed
+bool toolarmZeroed   = false;  // Tracks if the toolarm has zeroed
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
@@ -280,7 +281,7 @@ void setup() {
     carriage.setMaxSpeed(2000);
     carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
-    toolhead.setMaxSpeed(5000);
+    toolhead.setMaxSpeed(8000);
     toolhead.setAcceleration(10000);
     toolarm.setMaxSpeed(5000);
     toolarm.setAcceleration(4000);
@@ -320,6 +321,7 @@ void setup() {
     toolarmProfile.compute();
 
     // Enter Zeroing state on startup
+    delay(1000);
     currentState = ZEROING;
     Serial.println("STATE = ZEROING");
 }

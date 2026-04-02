@@ -1,19 +1,20 @@
 #include <Arduino.h>
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
+#include <ArduinoJson.h>
 
-// Mandrel pins
-#define MANDREL_DIR    19 // Mandrel driver Direction
-#define MANDREL_STEP   18 // Mandrel driver Step
-#define MANDREL_EN     21  // Mandrel driver Enable
+// Carriage pins (Motor 1 on PCB)
+#define CARRIAGE_DIR   17
+#define CARRIAGE_STEP  16
+#define CARRIAGE_EN    5
+#define CARRIAGE_LIMIT 35   // Limit switch 1 on PCB
 
-// Carriage pins
-#define CARRIAGE_DIR   17 // Carriage driver Direction
-#define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    5  // Carriage driver Enable
-#define CARRIAGE_LIMIT 35 // Carriage limit switch
+// Mandrel pins (Motor 2 on PCB)
+#define MANDREL_DIR    19   
+#define MANDREL_STEP   18
+#define MANDREL_EN     21
 
 // Emergency shut off pin
-#define E_STOP         13 // Emengency shut off
+#define E_STOP         13
 
 class Layer{
     // Information not accessible outside the Layer class
@@ -106,8 +107,8 @@ class Layer{
 };
 
 // Array of pointers to store the data for each layer from the UI
-const int maxLayers = 5;    // Maximum layers the machine can handle (subject to change)
-int totalLayers = 0;        // Number of layers recieved from the UI
+const int maxLayers  = 5;   // Maximum layers the machine can handle (subject to change)
+int totalLayers      = 0;   // Number of layers recieved from the UI
 int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects (chat gave me this idk how pointers work)
 
@@ -129,16 +130,16 @@ enum windingState {
     FINISHED    // Carriage and mandrel stopped
 };
 
-windingState currentState = PAUSED; // Paused on statup, no motion
-windingState previousState;          // Tracks last active state in case of E-Stop or pause
+windingState currentState  = PAUSED;    // Paused on statup, no motion
+windingState previousState = PAUSED;    // Tracks last active state in case of E-Stop or pause
 
 // Harware Constants
-const float Pitch       = 2.0; // Belt pitch (in mm)
-const int motorSteps    = 200; // Number of steps motor makes per revolution
-const int microsteps    = 16;  // Not Sure about this, ask Loki
-const int motorTeeth    = 20;  // Number of pulley teeth on motor pulleys
-const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
-const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
+const float Pitch    = 2.0; // Belt pitch (in mm)
+const int motorSteps = 200; // Number of steps motor makes per revolution
+const int microsteps = 16;  // Not Sure about this, ask Loki
+const int motorTeeth = 20;  // Number of pulley teeth on motor pulleys
+const int carTeeth   = 20;  // Number of pulley teeth on carriage pulley
+const int manTeeth   = 20;  // Number of pulley teeth on mandrel pulley
 
 const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);               // Carriage steps per mm moved
 const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);   // Required carriage steps per mandrel step
@@ -151,8 +152,8 @@ long lastManStep;       // Stores previous loop's mandrel position
 long dwellTargetStep;   // Number of extra steps mandrel must move at end of a pass
 
 // Stepper Objects
-AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     //creates object called mandrel to store current step position, target position, speed, timing
-AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  //same as above but for the carriage
+AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
+AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  // Same as above but for the carriage
 
 void setup() {
     Serial.begin(115200);

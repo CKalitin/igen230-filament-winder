@@ -1,30 +1,31 @@
 #include <Arduino.h>
 #include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
+#include <ArduinoJson.h>
 
-// Mandrel pins
-#define MANDREL_DIR    19
-#define MANDREL_STEP   18
-#define MANDREL_EN     21
-
-// Carriage pins
+// Carriage pins (Motor 1 on PCB)
 #define CARRIAGE_DIR   17
 #define CARRIAGE_STEP  16
 #define CARRIAGE_EN    5
-#define CARRIAGE_LIMIT 35
+#define CARRIAGE_LIMIT 35   // Limit switch 1 on PCB
 
-// Toolhead pins
+// Mandrel pins (Motor 2 on PCB)
+#define MANDREL_DIR    19   
+#define MANDREL_STEP   18
+#define MANDREL_EN     21
+
+// Toolhead pins (Motor 3 on PCB)
 #define TOOLHEAD_DIR   14
 #define TOOLHEAD_STEP  12
 #define TOOLHEAD_EN    27
 
-// Toolarm pins
+// Toolarm pins (Motor 4 on PCB)
 #define TOOLARM_DIR    25 
 #define TOOLARM_STEP   26
 #define TOOLARM_EN     33
-#define TOOLARM_LIMIT  32
+#define TOOLARM_LIMIT  32   // Limit switch 2 on PCB
 
 // Emergency stop pin
-#define E_STOP 15
+#define E_STOP         13
 
 class SplineProfile {
     private:
@@ -229,10 +230,10 @@ const int toolheadTeeth = 60;  // Number of pulley teeth on toolhead pulley
 const int toolarmPitch  = 3;   // mm per revolution
 const int toolarmZero   = 120; // Physical distance from mandrel axis at position 0 (mm)
 
-const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
-const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required carriage steps per mandrel step
-const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
-const float toolarmStepsPerMM = (motorSteps * microsteps) / toolarmPitch;                         // Toolarm steps per mm
+const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                // Carriage steps per mm moved
+const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);    // Required carriage steps per mandrel step
+const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth); // Steps for one full toolhead rotation
+const float toolarmStepsPerMM   = (motorSteps * microsteps) / toolarmPitch;                      // Toolarm steps per mm
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)

@@ -1,25 +1,25 @@
 #include <Arduino.h>
-#include <AccelStepper.h> // this is the library that allows arduino ide to talk to motor drivers
+#include <AccelStepper.h> // This is the library that allows the program to talk to motor drivers
+#include <ArduinoJson.h>
 
-// Mandrel pins
-#define MANDREL_DIR    14 // Mandrel driver Direction
-#define MANDREL_STEP   12 // Mandrel driver Step
-#define MANDREL_EN     27 // Mandrel driver Enable
+// Carriage pins (Motor 1 on PCB)
+#define CARRIAGE_DIR   17
+#define CARRIAGE_STEP  16
+#define CARRIAGE_EN    5
+#define CARRIAGE_LIMIT 35   // Limit switch 1 on PCB
 
-// Carriage pins
-#define CARRIAGE_DIR   17 // Carriage driver Direction
-#define CARRIAGE_STEP  16 // Carriage driver Step
-#define CARRIAGE_EN    5  // Carriage driver Enable
-#define CARRIAGE_LIMIT 35 // Carriage limit switch
+// Mandrel pins (Motor 2 on PCB)
+#define MANDREL_DIR    19   
+#define MANDREL_STEP   18
+#define MANDREL_EN     21
 
-// Toolhead pins
-#define TOOLHEAD_DIR   19 // Toolhead driver Direction
-#define TOOLHEAD_STEP  18 // Toolhead driver Step
-#define TOOLHEAD_EN    21 // Toolhead driver Enable
-#define TOOLHEAD_LIMIT 32 // Toolhead limit switch
+// Toolhead pins (Motor 3 on PCB)
+#define TOOLHEAD_DIR   14
+#define TOOLHEAD_STEP  12
+#define TOOLHEAD_EN    27
 
 // Emergency shut off pin
-#define E_STOP 15 // Emengency shut off
+#define E_STOP         13
 
 class Layer{
     // Information not accessible outside the Layer class
@@ -100,14 +100,14 @@ class Layer{
 };
 
 // Array of pointers to store the data for each layer from the UI
-const int maxLayers = 10;    // Maximum layers the machine can handle (subject to change)
-int totalLayers = 0;        // Number of layers recieved from the UI
-int activeLayerIndex = 0;   // Layer currently winding
-Layer* layers[maxLayers];   // An array of pointers to Layer objects (chat gave me this idk how pointers work)
+const int maxLayers  = 10; // Maximum layers the machine can handle (subject to change)
+int totalLayers      = 0;  // Number of layers recieved from the UI
+int activeLayerIndex = 0;  // Layer currently winding
+Layer* layers[maxLayers];  // An array of pointers to Layer objects (chat gave me this idk how pointers work)
 
 // Stores layer data received from UI in the layer pointer array
 void LayerFromUI(float length, float angle, float offset, float stepover, float dwell, float diameter) {
-    
+
     if (totalLayers < maxLayers) {  // Make sure data can fit in the array
         layers[totalLayers] = new Layer(length, angle, offset, stepover, dwell, diameter);  // Create a new layer object
         totalLayers++;
@@ -123,8 +123,8 @@ enum windingState {
     FINISHED    // Carriage and mandrel stopped
 };
 
-windingState currentState = PAUSED; // Paused on statup, no motion
-windingState previousState;          // Tracks last active state in case of E-Stop or pause
+windingState currentState  = PAUSED;    // Paused on statup, no motion
+windingState previousState = PAUSED;    // Tracks last active state in case of E-Stop or pause
 
 // Harware Constants
 const float Pitch       = 2.0; // Belt pitch (in mm)
@@ -135,22 +135,21 @@ const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
 const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
 const int toolheadTeeth = 60;  // Number of pulley teeth on toolhead pulley
 
-const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
-const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required carriage steps per mandrel step
-const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
+const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                // Carriage steps per mm moved
+const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);    // Required carriage steps per mandrel step
+const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth); // Steps for one full toolhead rotation
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)
 
 // Global Control Variables
-float carAccumulator = 0;       // Save fractional steps to move carriage
 long lastManStep;               // Stores previous loop's mandrel position
 long dwellTargetStep;           // Number of extra steps mandrel must move at end of a pass
 bool toolheadFlipDone = false;  // Tracks whether toolhead has finished flipping
-bool carriageZeroed = false;    // Tracks if the carriage has zeroed
-bool toolheadZeroed = false;    // Tracks if the toolhead has zeroed
-bool toolheadAtZero = false;    // Tracks if the toolhead is at its zero position during dwell
-bool windingOver = false;       // Tracks if the wind has finished
+bool carriageZeroed   = false;  // Tracks if the carriage has zeroed
+bool toolheadZeroed   = false;  // Tracks if the toolhead has zeroed
+bool toolheadAtZero   = false;  // Tracks if the toolhead is at its zero position during dwell
+bool windingOver      = false;  // Tracks if the wind has finished
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
