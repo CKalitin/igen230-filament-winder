@@ -2,33 +2,30 @@
 #include <AccelStepper.h>
 #include <ArduinoJson.h>
 
-// Mandrel pins
-#define MANDREL_DIR    12
-#define MANDREL_STEP   13
-#define MANDREL_EN     14
+/// Mandrel pins
+#define MANDREL_DIR    19
+#define MANDREL_STEP   18
+#define MANDREL_EN     21
 
 // Carriage pins
-#define CARRIAGE_DIR   15
+#define CARRIAGE_DIR   17
 #define CARRIAGE_STEP  16
-#define CARRIAGE_EN    17
-#define CARRIAGE_LIMIT 18
+#define CARRIAGE_EN    5
+#define CARRIAGE_LIMIT 35
 
 // Toolhead pins
-#define TOOLHEAD_DIR   21
-#define TOOLHEAD_STEP  22
-#define TOOLHEAD_EN    23
-#define TOOLHEAD_LIMIT 19
+#define TOOLHEAD_DIR   14
+#define TOOLHEAD_STEP  12
+#define TOOLHEAD_EN    27
 
 // Toolarm pins
-#define TOOLARM_DIR    25
+#define TOOLARM_DIR    25 
 #define TOOLARM_STEP   26
-#define TOOLARM_EN     27
+#define TOOLARM_EN     33
 #define TOOLARM_LIMIT  32
 
 // Emergency stop pin
-#define E_STOP 34
-
-// ─── Spline Profile ───────────────────────────────────────────────────────────
+#define E_STOP 15
 
 class SplineProfile {
     private:
@@ -88,7 +85,7 @@ class SplineProfile {
             }
         }
 
-        float getTarget(float x) const {
+        float getToolarmTarget(float x) const {
             if (_n < 2) return _standoff;
             if (x <= _x[0])    return _y[0]    + _standoff;
             if (x >= _x[_n-1]) return _y[_n-1] + _standoff;
@@ -104,8 +101,6 @@ class SplineProfile {
 
         bool isReady() const { return _n >= 2; }
 };
-
-// ─── Layer ────────────────────────────────────────────────────────────────────
 
 class Layer {
     private:
@@ -167,29 +162,28 @@ class Layer {
         bool isDone() const { return _passDone >= _pass; }
 };
 
-// ─── Globals ──────────────────────────────────────────────────────────────────
+SplineProfile toolarmProfile;
 
-const int maxLayers = 10;
-int totalLayers     = 0;
+const int maxLayers  = 10;
+int totalLayers      = 0;
 int activeLayerIndex = 0;
 Layer* layers[maxLayers];
 
-SplineProfile toolarmProfile;
+// Harware Constants
+const float Pitch       = 2.0; // Belt pitch (in mm)
+const int motorSteps    = 200; // Number of steps motor makes per revolution
+const int microsteps    = 16;  // Not Sure about this, ask Loki
+const int motorTeeth    = 20;  // Number of pulley teeth on motor pulleys
+const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
+const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
+const int toolheadTeeth = 60;  // Number of pulley teeth on toolhead pulley
+const int toolarmPitch  = 3;   // mm per revolution
+const int toolarmZero   = 120; // Physical distance from mandrel axis at position 0 (mm)
 
-// Hardware constants
-const float Pitch       = 2.0;
-const int motorSteps    = 200;
-const int microsteps    = 16;
-const int motorTeeth    = 20;
-const int carTeeth      = 20;
-const int manTeeth      = 40;
-const int toolheadTeeth = 60;
-const int toolarmPitch  = 4;
-
-const float stepsPerMM         = (float)(motorSteps * microsteps) / (carTeeth * Pitch);
-const float stepsPerRev        = (float)(motorSteps * microsteps) * ((float)manTeeth / motorTeeth);
+const float stepsPerMM          = (float)(motorSteps * microsteps) / (carTeeth * Pitch);
+const float stepsPerRev         = (float)(motorSteps * microsteps) * ((float)manTeeth / motorTeeth);
 const float toolheadStepsPerRev = (float)(motorSteps * microsteps) * ((float)toolheadTeeth / motorTeeth);
-const float toolarmStepsPerMM  = (float)(motorSteps * microsteps) / toolarmPitch;
+const float toolarmStepsPerMM   = (float)(motorSteps * microsteps) / toolarmPitch;
 
 float manD = 0.0;
 
@@ -209,8 +203,6 @@ AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);
 AccelStepper toolhead(AccelStepper::DRIVER, TOOLHEAD_STEP, TOOLHEAD_DIR);
 AccelStepper toolarm(AccelStepper::DRIVER, TOOLARM_STEP, TOOLARM_DIR);
 
-// ─── State Machine ────────────────────────────────────────────────────────────
-
 enum windingState {
     WAITING,    // Waiting for JSON job from UI
     PAUSED,     // E-Stop or pause — all motion stopped
@@ -222,8 +214,6 @@ enum windingState {
 
 windingState currentState  = WAITING;
 windingState previousState = WAITING;
-
-// ─── JSON Parser ──────────────────────────────────────────────────────────────
 
 void clearJob() {
     for (int i = 0; i < totalLayers; i++) {
@@ -301,8 +291,6 @@ bool parseJob(const String& json) {
     return true;
 }
 
-// ─── Setup ────────────────────────────────────────────────────────────────────
-
 void setup() {
     Serial.begin(115200);
 
@@ -320,7 +308,6 @@ void setup() {
     pinMode(TOOLARM_EN,    OUTPUT);
 
     pinMode(CARRIAGE_LIMIT, INPUT_PULLUP);
-    pinMode(TOOLHEAD_LIMIT, INPUT_PULLUP);
     pinMode(TOOLARM_LIMIT,  INPUT_PULLUP);
     pinMode(E_STOP,         INPUT);
 
@@ -338,14 +325,11 @@ void setup() {
     toolarm.setMaxSpeed(3000);
     toolarm.setAcceleration(4000);
 
-    Serial.println("READY");  // Signal to UI that ESP32 is ready for a job
+    Serial.println("READY");
 }
-
-// ─── Loop ─────────────────────────────────────────────────────────────────────
 
 void loop() {
 
-    // ── E-Stop ──────────────────────────────────────────────────────────────
     if (currentState != WAITING) {
         if (digitalRead(E_STOP) == HIGH) {
             if (currentState != PAUSED) {
@@ -360,7 +344,6 @@ void loop() {
         }
     }
 
-    // ── State Machine ────────────────────────────────────────────────────────
     switch (currentState) {
 
         case WAITING: {
@@ -384,10 +367,12 @@ void loop() {
         }
 
         case PAUSED: {
-            mandrel.setSpeed(0);
-            mandrel.runSpeed();
+            mandrel.stop();
+            mandrel.run();
             carriage.stop();
             carriage.run();
+            toolhead.stop();
+            toolhead.run();
             toolarm.stop();
             toolarm.run();
             break;
@@ -406,15 +391,6 @@ void loop() {
                     while (carriage.distanceToGo() != 0) carriage.run();
                     carriage.setCurrentPosition(0);
                     carriageZeroed = true;
-                }
-            }
-            else if (!toolheadZeroed) {
-                toolhead.setSpeed(-400);
-                toolhead.runSpeed();
-                if (digitalRead(TOOLHEAD_LIMIT) == LOW) {
-                    toolhead.stop();
-                    toolhead.setCurrentPosition(0);
-                    toolheadZeroed = true;
                 }
             }
             else if (!toolarmZeroed) {
@@ -470,7 +446,7 @@ void loop() {
             // Toolarm tracking
             float currentPosMM = carriage.currentPosition() / stepsPerMM;
             if (toolarmProfile.isReady()) {
-                float targetMM    = toolarmProfile.getTarget(currentPosMM);
+                float targetMM    = toolarmProfile.getToolarmTarget(currentPosMM);
                 long  targetSteps = (long)(targetMM * toolarmStepsPerMM);
                 toolarm.moveTo(targetSteps);
             }

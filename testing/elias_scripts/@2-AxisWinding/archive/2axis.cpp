@@ -132,13 +132,13 @@ enum windingState {
 windingState currentState = PAUSED; // Paused on statup, no motion
 windingState previousState;          // Tracks last active state in case of E-Stop or pause
 
-// Harware Variables (Subject to change)
-const float Pitch = 2.0;      // Belt pitch (in mm)
-const int motorSteps = 200.0; // Number of steps motor makes per revolution
-const int microsteps = 16;    // Not Sure about this, ask Loki
-const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
-const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
-const int manTeeth = 20;      // Number of pulley teeth on mandrel pulley
+// Harware Constants
+const float Pitch       = 2.0; // Belt pitch (in mm)
+const int motorSteps    = 200; // Number of steps motor makes per revolution
+const int microsteps    = 16;  // Not Sure about this, ask Loki
+const int motorTeeth    = 20;  // Number of pulley teeth on motor pulleys
+const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
+const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
 
 const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);               // Carriage steps per mm moved
 const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);   // Required carriage steps per mandrel step
@@ -147,7 +147,6 @@ const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTe
 float manD;   // Mandrel Diameter (mm)
 
 // Global Control Variables
-float carAccumulator;   // Save fractional steps to move carriage
 long lastManStep;       // Stores previous loop's mandrel position
 long dwellTargetStep;   // Number of extra steps mandrel must move at end of a pass
 
@@ -250,7 +249,7 @@ void loop() {
             // Get needed information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
             float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
-            float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;
+            float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;              // Safe carriage step limit
             
             const float maxCarriageSteps = 4000.0;  // Safe carriage step limit
 
@@ -290,7 +289,6 @@ void loop() {
             // Cancel any queued carriage motion
             carriage.stop();                                         
             carriage.setCurrentPosition(carriage.currentPosition());
-            carAccumulator = 0;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
@@ -300,7 +298,6 @@ void loop() {
                 }
                 else {
                     lastManStep = mandrel.currentPosition(); // Update mandrel position before resuming
-                    carAccumulator = 0;
                     currentState = MOVING;
                 }
             }
@@ -316,7 +313,6 @@ void loop() {
 
                 // Reset system variables for the next layer
                 activeLayerIndex++;
-                carAccumulator = 0;
                 lastManStep = mandrel.currentPosition();
             }
             else {

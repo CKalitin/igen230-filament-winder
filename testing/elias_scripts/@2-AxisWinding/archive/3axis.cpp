@@ -81,9 +81,10 @@ class Layer{
         }
 
         // Returns the toolhead position in steps for a given direction
-        // Forward pass: fiber feeds at +angle, reverse pass: fiber feeds at -angle
+        // Forward pass: fiber feeds at (90 - angle), reverse pass: fiber feeds at -(90 - angle)
         long getToolheadTarget(bool goingForward, float stepsPerRev) const {
-            float toolheadAngle = goingForward ? -_angle : _angle;  // Flip sign on direction change
+            float toolheadAngle = (90.0 - _angle);                // Toolhead angle based on winding angle
+            toolheadAngle = goingForward ? -_angle : _angle;      // Flip sign on direction change
             return (long)((toolheadAngle / 360.0) * stepsPerRev);
         }
 
@@ -125,14 +126,14 @@ enum windingState {
 windingState currentState = PAUSED; // Paused on statup, no motion
 windingState previousState;          // Tracks last active state in case of E-Stop or pause
 
-// Harware Variables (Subject to change)
-const float Pitch = 2.0;      // Belt pitch (in mm)
-const int motorSteps = 200;   // Number of steps motor makes per revolution
-const int microsteps = 16;    // Not Sure about this, ask Loki
-const int motorTeeth = 20;    // Number of pulley teeth on motor pulleys
-const int carTeeth = 20;      // Number of pulley teeth on carriage pulley
-const int manTeeth = 20;      // Number of pulley teeth on mandrel pulley
-const int toolheadTeeth = 60; // Number of pulley teeth on toolhead pulley
+// Harware Constants
+const float Pitch       = 2.0; // Belt pitch (in mm)
+const int motorSteps    = 200; // Number of steps motor makes per revolution
+const int microsteps    = 16;  // Not Sure about this, ask Loki
+const int motorTeeth    = 20;  // Number of pulley teeth on motor pulleys
+const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
+const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
+const int toolheadTeeth = 60;  // Number of pulley teeth on toolhead pulley
 
 const float stepsPerMM  = (motorSteps * microsteps) / (carTeeth * Pitch);                         // Carriage steps per mm moved
 const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);             // Required carriage steps per mandrel step
@@ -142,13 +143,14 @@ const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeet
 float manD;   // Mandrel Diameter (mm)
 
 // Global Control Variables
-float carAccumulator = 0;   // Save fractional steps to move carriage
-long lastManStep;       // Stores previous loop's mandrel position
-long dwellTargetStep;   // Number of extra steps mandrel must move at end of a pass
+float carAccumulator = 0;       // Save fractional steps to move carriage
+long lastManStep;               // Stores previous loop's mandrel position
+long dwellTargetStep;           // Number of extra steps mandrel must move at end of a pass
 bool toolheadFlipDone = false;  // Tracks whether toolhead has finished flipping
-bool carriageZeroed = false;
-bool toolheadZeroed = false;
-bool windingOver = false;
+bool carriageZeroed = false;    // Tracks if the carriage has zeroed
+bool toolheadZeroed = false;    // Tracks if the toolhead has zeroed
+bool toolheadAtZero = false;    // Tracks if the toolhead is at its zero position during dwell
+bool windingOver = false;       // Tracks if the wind has finished
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
@@ -294,7 +296,7 @@ void loop() {
             // Get needed information from the Layer class
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
             float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
-            float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;
+            float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;              // Safe carriage step limit
             
             const float maxCarriageSteps = 4000.0;  // Safe carriage step limit
 
@@ -309,7 +311,6 @@ void loop() {
             // Run both motors
             mandrel.runSpeed();
             carriage.runSpeed();
-
 
             // Check for End of Pass
             float currentPosMM = carriage.currentPosition() / stepsPerMM;   // Convert position in steps to mm
@@ -335,14 +336,19 @@ void loop() {
             // Cancel any queued carriage motion
             carriage.stop();                                         
             carriage.setCurrentPosition(carriage.currentPosition());
-            carAccumulator = 0;
 
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
-            if (!toolheadFlipDone) {
-                // isGoingForward() still holds the OLD direction here (countPass hasn't been called yet)
-                // so we target the NEW direction by flipping the sign
-                bool nextDirection = !activeLayer->isGoingForward();
+            if (!toolheadAtZero) { // Rotate toolhead to zero position during dwell
+                toolhead.moveTo(0);
+                toolhead.run();
+
+                if (toolhead.distanceToGo() == 0) {
+                    toolheadAtZero = true;  // Toolhead is at zero position
+                }
+            }
+            else if (!toolheadFlipDone) {   // Rotate toolhead for the next pass
+                bool nextDirection = !activeLayer->isGoingForward();    // Target the new direction by flipping the sign
                 long toolheadTarget = activeLayer->getToolheadTarget(nextDirection, toolheadStepsPerRev);
                 toolhead.moveTo(toolheadTarget);
                 toolhead.run();
