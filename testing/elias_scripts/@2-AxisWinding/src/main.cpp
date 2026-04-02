@@ -348,6 +348,7 @@ void loop() {
 
     switch (currentState) {
 
+        // Stop all motors if the emergency stop is pressed
         case PAUSED: {
 
             // Stop all motion
@@ -358,9 +359,10 @@ void loop() {
             toolarm.stop();
             toolarm.run();
 
-            break;  // Motors held in position, waiting for command to start or zero
+            break;  // Motors held in position
         }
 
+        // Move the carriage to limit switch to set it's home "zero" position and prepare for winding
         case ZEROING: {
             previousState = currentState;
 
@@ -409,6 +411,7 @@ void loop() {
             break;
         }
 
+        // Move the carriage and mandrel at speeds relative to the given winding angle
         case MOVING: {
             //Increment pass
             if (previousState == DWELLING) {
@@ -458,7 +461,8 @@ void loop() {
             break;  // Exit Moving state
         }
 
-        case DWELLING: {    // Spin the mandrel to align the fiber for the next pass, no carriage motion
+        // Spin the mandrel to align the fiber for the next pass, no carriage motion
+        case DWELLING: {
             previousState = currentState;
 
             // Cancel any queued carriage motion
@@ -492,6 +496,7 @@ void loop() {
             break;  // Exit Dwell state
         }
 
+        // Move on to the next layer or end the wind if there are none
         case FINISHED: {
             previousState = currentState;
 
