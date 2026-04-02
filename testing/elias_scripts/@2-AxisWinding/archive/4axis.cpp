@@ -6,7 +6,7 @@
 #define CARRIAGE_DIR   17
 #define CARRIAGE_STEP  16
 #define CARRIAGE_EN    5
-#define CARRIAGE_LIMIT 35   // Limit switch 1 on PCB
+#define CARRIAGE_LIMIT 35   // Limit switch 1 (on PCB)
 
 // Mandrel pins (Motor 2 on PCB)
 #define MANDREL_DIR    19   
@@ -22,7 +22,7 @@
 #define TOOLARM_DIR    25 
 #define TOOLARM_STEP   26
 #define TOOLARM_EN     33
-#define TOOLARM_LIMIT  32   // Limit switch 2 on PCB
+#define TOOLARM_LIMIT  32   // Limit switch 2 (on PCB)
 
 // Emergency stop pin
 #define E_STOP         13
@@ -30,14 +30,14 @@
 class SplineProfile {
     private:
         static const int maxPoints = 50;  // Maximum number of profile points
+        float _standoff;      // Fixed standoff distance from surface (mm)
         float _x[maxPoints];  // Carriage positions (mm)
         float _y[maxPoints];  // Radius values (mm)
         float _a[maxPoints];  // Spline coefficients
         float _b[maxPoints];  // 
         float _c[maxPoints];  //
         float _d[maxPoints];  //
-        int _n;               // Total number of points
-        float _standoff;      // Fixed standoff distance from surface (mm)
+        int   _n;               // Total number of points
 
     public:
         SplineProfile() : _n(0), _standoff(0) {}
@@ -66,25 +66,25 @@ class SplineProfile {
             float z[maxPoints];
 
             for (int i = 0; i < n; i++)
-                h[i] = _x[i+1] - _x[i];
+                h[i] = _x[i + 1] - _x[i];
 
             for (int i = 1; i < n; i++)
-                alpha[i] = (3.0/h[i])*(_y[i+1]-_y[i]) - (3.0/h[i-1])*(_y[i]-_y[i-1]);
+                alpha[i] = (3.0 / h[i]) * (_y[i + 1] - _y[i]) - (3.0 / h[i - 1]) * (_y[i] - _y[i - 1]);
 
             l[0] = 1; mu[0] = 0; z[0] = 0;
 
             for (int i = 1; i < n; i++) {
-                l[i] = 2*(_x[i+1]-_x[i-1]) - h[i-1]*mu[i-1];
+                l[i] = 2 * (_x[i + 1] - _x[i - 1]) - h[i - 1] * mu[i - 1];
                 mu[i] = h[i] / l[i];
-                z[i] = (alpha[i] - h[i-1]*z[i-1]) / l[i];
+                z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i];
             }
 
             l[n] = 1; z[n] = 0; _c[n] = 0;
 
-            for (int j = n-1; j >= 0; j--) {
-                _c[j] = z[j] - mu[j]*_c[j+1];
-                _b[j] = (_y[j+1]-_y[j])/h[j] - h[j]*(_c[j+1]+2*_c[j])/3.0;
-                _d[j] = (_c[j+1]-_c[j]) / (3.0*h[j]);
+            for (int j = n - 1; j >= 0; j--) {
+                _c[j] = z[j] - mu[j] * _c[j + 1];
+                _b[j] = (_y[j + 1] - _y[j]) / h[j] - h[j] * (_c[j + 1] + 2 *_c[j]) / 3.0;
+                _d[j] = (_c[j + 1] - _c[j]) / (3.0 * h[j]);
                 _a[j] = _y[j];
             }
         }
@@ -94,17 +94,17 @@ class SplineProfile {
             if (_n < 2) return _standoff;
 
             // Clamp to profile range
-            if (x <= _x[0])   return _y[0] + _standoff;
+            if (x <= _x[0])      return _y[0] + _standoff;
             if (x >= _x[_n - 1]) return _y[_n - 1] + _standoff;
 
             // Find the segment
             int i = 0;
-            for (int j = 0; j < _n-1; j++) {
+            for (int j = 0; j < _n - 1; j++) {
                 if (x >= _x[j] && x <= _x[j + 1]) { i = j; break; }
             }
 
             float dx = x - _x[i];
-            float radius = _a[i] + _b[i]*dx + _c[i]*dx*dx + _d[i]*dx*dx*dx; // Calculate the radius between known points
+            float radius = _a[i] + (_b[i] * dx) + (_c[i] * dx * dx) + (_d[i] * dx * dx * dx); // Calculate the radius between known points
             return radius + _standoff;  // Return total required distance from mandrel surface (mm)
         }
 
@@ -172,8 +172,8 @@ class Layer{
          // Returns the toolhead position in steps for a given direction
         // Forward pass: fiber feeds at (90 - angle), reverse pass: fiber feeds at -(90 - angle)
         long getToolheadTarget(bool goingForward, float stepsPerRev) const {
-            float toolheadAngle = (90.0 - _angle);                // Toolhead angle based on winding angle
-            toolheadAngle = goingForward ? -_angle : _angle;      // Flip sign on direction change
+            float toolheadAngle = (90.0 - _angle);                          // Toolhead angle based on winding angle
+            toolheadAngle = goingForward ? -toolheadAngle : toolheadAngle;  // Flip sign on direction change
             return (long)((toolheadAngle / 360.0) * stepsPerRev);
         }
 
@@ -193,19 +193,10 @@ class Layer{
 SplineProfile toolarmProfile;  // Global profile instance
 
 // Array of pointers to store the data for each layer from the UI
-const int maxLayers = 5;    // Maximum layers the machine can handle (subject to change)
-int totalLayers = 0;        // Number of layers recieved from the UI
+const int maxLayers  = 5;   // Maximum layers the machine can handle (subject to change)
+int totalLayers      = 0;   // Number of layers recieved from the UI
 int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects
-
-// Stores layer data received from UI in the layer pointer array
-void LayerFromUI(int length, int angle, int offset, float stepover, int dwell, float diameter) {
-    
-    if (totalLayers < maxLayers) {  // Make sure data can fit in the array
-        layers[totalLayers] = new Layer(length, angle, offset, stepover, dwell, diameter);  // Create a new layer object
-        totalLayers++;
-    }
-}
 
 // Possible Winding/Operation States
 enum windingState {
@@ -216,24 +207,24 @@ enum windingState {
     FINISHED    // Carriage and mandrel stopped
 };
 
-windingState currentState = PAUSED; // Paused on statup, no motion
-windingState previousState;          // Tracks last active state in case of E-Stop or pause
+windingState currentState  = PAUSED;    // Paused on statup, no motion
+windingState previousState = PAUSED;    // Tracks last active state in case of E-Stop or pause
 
 // Harware Constants
-const float Pitch       = 2.0; // Belt pitch (in mm)
-const int motorSteps    = 200; // Number of steps motor makes per revolution
-const int microsteps    = 16;  // Not Sure about this, ask Loki
-const int motorTeeth    = 20;  // Number of pulley teeth on motor pulleys
-const int carTeeth      = 20;  // Number of pulley teeth on carriage pulley
-const int manTeeth      = 20;  // Number of pulley teeth on mandrel pulley
-const int toolheadTeeth = 60;  // Number of pulley teeth on toolhead pulley
-const int toolarmPitch  = 3;   // mm per revolution
-const int toolarmZero   = 120; // Physical distance from mandrel axis at position 0 (mm)
+const float Pitch       = 2.0;  // Belt pitch (in mm)
+const int motorSteps    = 200;  // Number of steps motor makes per revolution
+const int microsteps    = 16;   // Not Sure about this, ask Loki
+const int motorTeeth    = 20;   // Number of pulley teeth on motor pulleys
+const int carTeeth      = 20;   // Number of pulley teeth on carriage pulley
+const int manTeeth      = 20;   // Number of pulley teeth on mandrel pulley
+const int toolheadTeeth = 60;   // Number of pulley teeth on toolhead pulley
+const int toolarmPitch  = 3;    // mm per revolution
+const int toolarmZero   = 120;  // Physical distance from mandrel axis to the toolarm at position 0 (mm)
 
-const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                // Carriage steps per mm moved
-const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);    // Required carriage steps per mandrel step
-const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth); // Steps for one full toolhead rotation
-const float toolarmStepsPerMM   = (motorSteps * microsteps) / toolarmPitch;                      // Toolarm steps per mm
+const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                   // Carriage steps per mm moved
+const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);       // Required carriage steps per mandrel step
+const float toolheadStepsPerRev = motorSteps * microsteps * ((float)toolheadTeeth / motorTeeth);    // Steps for one full toolhead rotation
+const float toolarmStepsPerMM   = (motorSteps * microsteps) / toolarmPitch;                         // Toolarm steps per mm
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)
@@ -242,9 +233,9 @@ float manD;   // Mandrel Diameter (mm)
 long lastManStep;              // Stores previous loop's mandrel position
 long dwellTargetStep;          // Number of extra steps mandrel must move at end of a pass
 bool toolheadFlipped = false;  // Tracks whether toolhead has finished flipping
-bool carriageZeroed = false;   // Tracks if the carriage has zeroed
-bool toolheadZeroed = false;   // Tracks if the toolhead has zeroed
-bool toolarmZeroed = false;    // Tracks if the toolarm has zeroed
+bool carriageZeroed  = false;  // Tracks if the carriage has zeroed
+bool toolheadZeroed  = false;  // Tracks if the toolhead has zeroed
+bool toolarmZeroed   = false;  // Tracks if the toolarm has zeroed
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
@@ -290,19 +281,23 @@ void setup() {
     carriage.setMaxSpeed(2000);
     carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
-    toolhead.setMaxSpeed(2000);
-    toolhead.setAcceleration(1000);
+    toolhead.setMaxSpeed(8000);
+    toolhead.setAcceleration(10000);
     toolarm.setMaxSpeed(5000);
     toolarm.setAcceleration(4000);
 
-    // Manually add a test layer 
-    // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(430, 45, 0, 4.0, 180, 79.0);
+    // Layer(length, angle, offset, stepover, dwell, diameter)
+    layers[0] = new Layer(179, 45, 0, 4.0, 180, 79.0);
+    
+    // Tell the program there is 1 layer to process
+    totalLayers = 1;
+
+    manD = 79.0;
 
     // Define mandrel profile — cylinder with hemispherical ends
-    // Total length: 150mm (50mm dome + 100mm cylinder + 50mm dome)
+    // Total length: 150mm (34.5mm dome + 100mm cylinder + 34.5mm dome)
     // Radius: 50mm throughout, hemisphere described by r(x) = sqrt(R^2 - (R-x)^2)
-    float R = 34.5;  // Hemisphere radius = cylinder radius for tangent transition
+    float R = 39.5;  // Hemisphere radius = cylinder radius for tangent transition
 
     // Left hemisphere (using 10 points)
     for (int i = 0; i <= 10; i++) {
@@ -311,29 +306,29 @@ void setup() {
         toolarmProfile.addPoint(x, y);
     }
 
-    // Cylinder section (R + to ) — just need 2 points, it's flat
+    // Cylinder section (using 2 points)
     toolarmProfile.addPoint(R + 100.0, R);  // End of cylinder
 
     // Right hemisphere (using 10 points)
     for (int i = 0; i <= 10; i++) {
         float x = R + 100.0 + (R / 10.0) * i;
-        float y = sqrt(R*R - ((R/10.0)*i)*((R/10.0)*i));
+        float t = (R / 10.0) * i;          // distance from cylinder end
+        float y = sqrt(R*R - t*t);         // same formula as left dome
         toolarmProfile.addPoint(x, y);
     }
 
+    toolarmProfile.setStandoff(20.0);  
     toolarmProfile.compute();
-    
-    // Set global mandrel diameter (mm)
-    manD = 55.0;
 
     // Enter Zeroing state on startup
+    delay(1000);
     currentState = ZEROING;
     Serial.println("STATE = ZEROING");
 }
 
 void loop() {
     // If no layers exist, keep motors stopped
-    if (totalLayers == 0) return;
+    //if (totalLayers == 0) return;
 
     // Emergency shut off logic
     if (digitalRead(E_STOP) == HIGH) {
@@ -364,7 +359,7 @@ void loop() {
             toolarm.stop();
             toolarm.run();
 
-            break;  // Motors held in position, waiting for command to start or zero
+            break;  // Motors held in position
         }
 
         // Move the carriage to limit switch to set it's home "zero" position and prepare for winding
@@ -375,14 +370,14 @@ void loop() {
             toolheadZeroed = true;
 
             if (!carriageZeroed) { // Zero the carriage
-                carriage.setSpeed(-600);
+                carriage.setSpeed(-800);
                 carriage.runSpeed();
 
                 if (digitalRead(CARRIAGE_LIMIT) == HIGH) {
                     carriage.stop();
                     delay(200);
                     carriage.setCurrentPosition(0);
-                    carriage.moveTo(200);
+                    carriage.moveTo(1000);
                     while (carriage.distanceToGo() != 0) carriage.run();
                     carriage.setCurrentPosition(0);
                     carriageZeroed = true;
@@ -390,30 +385,28 @@ void loop() {
                 }
             }
             else if (!toolarmZeroed) { // Zero the toolarm
-                toolarm.setSpeed(-1000);
+                toolarm.setSpeed(-3000);
                 toolarm.runSpeed();
-                toolhead.setSpeed(2000);
-                toolhead.runSpeed();
 
-                if (digitalRead(TOOLARM_LIMIT) == HIGH) {
+                if (digitalRead(TOOLARM_LIMIT) == LOW) {
                     toolarm.stop();
                     delay(200);
                     toolarm.setCurrentPosition(0);
+                    toolarm.moveTo(2000);
+                    while (toolarm.distanceToGo() != 0) toolarm.run();
                     toolarmZeroed = true;
+                    toolarm.setCurrentPosition(0);
                     Serial.println("Toolarm Zero Set");
                 }
             }
             else { // Move to first toolhead position and start winding
                 long firstTarget = activeLayer->getToolheadTarget(true, toolheadStepsPerRev);
                 toolhead.moveTo(firstTarget);
-                toolhead.run();
-
-                if (toolhead.distanceToGo() == 0) {
-                    lastManStep = mandrel.currentPosition();
-                    delay(2000);
-                    currentState = MOVING;
-                    Serial.println("Zeroing Complete");
-                }
+                while (toolhead.distanceToGo() != 0) { toolhead.run(); }
+                lastManStep = mandrel.currentPosition();
+                delay(2000);
+                currentState = MOVING;
+                Serial.println("Zeroing Complete");
             }
             break;
         }
@@ -447,7 +440,9 @@ void loop() {
             carriage.runSpeed();
 
             float toolarmTarget = toolarmProfile.getToolarmTarget(currentPosMM);  // radius + standoff in mm
-            long toolarmSteps = (long)(toolarmTarget * toolarmStepsPerMM);
+            float travel = toolarmTarget - toolarmZero;
+            if (travel < 0.0) travel = 0.0;
+            long toolarmSteps = (long)(travel * toolarmStepsPerMM);
             toolarm.moveTo(toolarmSteps);
             toolarm.run();
 
@@ -489,7 +484,7 @@ void loop() {
                 }
             }
             if (toolheadFlipped && mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
-                if (activeLayer->isDone()) {  // Check if layer is finished and update current state
+                if (activeLayer->isDone()) { // Check if layer is finished and update current state
                     currentState = FINISHED;
                 }
                 else {
