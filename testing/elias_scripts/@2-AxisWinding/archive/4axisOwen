@@ -183,12 +183,14 @@ class Layer{
             else return _offset;
         }
 
-         // Returns the toolhead position in steps for a given direction
+        // Returns the toolhead position in steps for a given direction
         // Forward pass: fiber feeds at (90 - angle), reverse pass: fiber feeds at -(90 - angle)
         long getToolheadTarget(bool goingForward, float stepsPerRev) const {
-            float toolheadAngle = (90.0 - _angle);                                  // Toolhead angle based on winding angle
-            toolheadAngle = goingForward ? -toolheadAngle : toolheadAngle;  // Flip sign on direction change
-            return (long)((toolheadAngle / 360.0) * stepsPerRev);
+        // If UI angle is 60, targetAngle will be 60.0 or -60.0
+        float targetAngle = goingForward ? (float)_angle : -(float)_angle;
+    
+        // Convert degrees to motor steps
+        return (long)((targetAngle / 360.0) * stepsPerRev);
         }
 
         // Lets the loop know which way the carriage is moving
@@ -409,6 +411,7 @@ void loop() {
         case MOVING: {
             if (previousState == DWELLING) {
                 activeLayer->countPass();
+                toolheadFlipped = false;
             }
             previousState = currentState;
 
@@ -439,48 +442,35 @@ void loop() {
             break;
         }
 
-        case DWELLING: {
+ case DWELLING: {
             previousState = currentState;
             carriage.setSpeed(0); 
             toolarm.setSpeed(0);
             mandrel.setSpeed(1000); 
 
             if (!toolheadFlipped) {
-                bool nextDirection = !activeLayer->isGoingForward();
-                long toolheadTarget = activeLayer->getToolheadTarget(nextDirection, toolheadStepsPerRev);
-                toolhead.moveTo(toolheadTarget);
+                // Determine target based on the direction of the pass we are ABOUT to start
+                bool nextDir = !activeLayer->isGoingForward(); 
+                long targetSteps = activeLayer->getToolheadTarget(nextDir, toolheadStepsPerRev);
+                
+                toolhead.moveTo(targetSteps);
+                toolhead.run(); // Force the motor to step during this state
+                
                 if (toolhead.distanceToGo() == 0) {
                     toolheadFlipped = true;  
                 }
             }
 
+            // Wait for mandrel dwell AND toolhead flip to finish
             if (toolheadFlipped && mandrel.currentPosition() >= dwellTargetStep) {
                 if (activeLayer->isDone()) { 
                     currentState = FINISHED;
-                }
-                else {
-                    lastManStep = mandrel.currentPosition();
+                } else {
                     currentState = MOVING;
+                    // toolheadFlipped stays true until the NEXT dwell reset
                 }
-                toolheadFlipped = false;
             }
             break;
-        }
-
-        case FINISHED: {
-            previousState = currentState;
-            if (activeLayerIndex < totalLayers - 1) {
-                activeLayerIndex++;
-                lastManStep = mandrel.currentPosition();
-                toolheadFlipped = false;  
-                currentState = MOVING;
-            }
-            else {
-                mandrel.setSpeed(0);
-                carriage.setSpeed(0);
-                Serial.println("All layers complete. Winding over");
-            }
-            break; 
         }
     }
 
