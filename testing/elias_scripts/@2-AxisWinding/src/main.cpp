@@ -442,13 +442,20 @@ void loop() {
             mandrel.runSpeed();
             carriage.runSpeed();
 
-            // Calculate Toolarm Target
-            float toolarmTarget = toolarmProfile.getToolarmTarget(currentPosMM);  // radius + standoff in mm
+            // Calculate toolarm target
+            float toolarmTarget = toolarmProfile.getToolarmTarget(currentPosMM);
             float travel = toolarmZero - toolarmTarget;
             if (travel < 0.0) travel = 0.0;
-            long toolarmSteps = (long)(travel * toolarmStepsPerMM);
-            toolarm.moveTo(toolarmSteps);
+            long toolarmStepTarget = (long)(travel * toolarmStepsPerMM);
+            toolarm.moveTo(toolarmStepTarget);
             toolarm.run();
+
+            // If toolarm is lagging, slow carriage and mandrel until it catches up
+            long toolarmLag = abs(toolarmStepTarget - toolarm.currentPosition());
+            if (toolarmLag > 100) {  // threshold in steps — tune this value
+                mandrel.setSpeed(0);
+                carriage.setSpeed(0);
+            }
 
             // Enter Dwell state if the carriage has reached the end of a pass
             if (activeLayer->isGoingForward() && currentPosMM >= target) currentState = DWELLING;  
