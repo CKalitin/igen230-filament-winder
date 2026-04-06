@@ -148,8 +148,11 @@ const float stepsPerRev = (motorSteps * microsteps) * ((float)manTeeth / motorTe
 float manD;   // Mandrel Diameter (mm)
 
 // Global Control Variables
-long lastManStep;       // Stores previous loop's mandrel position
-long dwellTargetStep;   // Number of extra steps mandrel must move at end of a pass
+long lastManStep;              // Stores previous loop's mandrel position
+long dwellTargetStep;          // Number of extra steps mandrel must move at end of a pass
+bool carriageZeroed  = false;  // Tracks if the carriage has zeroed
+bool offsetReached   = false;  // Tracks if carriage has reached its required offset
+
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
@@ -177,21 +180,20 @@ void setup() {
     digitalWrite(CARRIAGE_DIR, HIGH);
 
     // Set speeds and accelerations
-    mandrel.setMaxSpeed(2000);
+    mandrel.setMaxSpeed(3000);
     mandrel.setSpeed(1000);
-    carriage.setMaxSpeed(4000);
-    carriage.setAcceleration(5000);
+    carriage.setMaxSpeed(5000);
+    carriage.setAcceleration(6000);
 
     // Manually add a test layer (since UI isn't connected yet)
     // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(230.0, 60.0, 0.0, 4.0, 180.0, 79.0);
+    LayerFromUI(230.0, 60.0, 0.0, 3.0, 100.0, 55.0);
     
     // Set global mandrel diameter (mm)
-    manD = 79.0;
+    manD = 55.0;
 
     // Enter Zeroing state on startup
     currentState = ZEROING;
-    Serial.println("STATE = ZEROING");
 }
 
 void loop() {
@@ -212,6 +214,16 @@ void loop() {
         }
     }
 
+    if (previousState != currentState) {
+        switch (currentState) {
+            case PAUSED:    Serial.println("STATE = PAUSED");   break;
+            case ZEROING:   Serial.println("STATE = ZEROING");  break;
+            case MOVING:    Serial.println("STATE = MOVING");   break;
+            case DWELLING:  Serial.println("STATE = DWELLING"); break;
+            case FINISHED:  Serial.println("STATE = FINISHED"); break;
+        }
+    }
+
     // State Machine
     switch (currentState) {
 
@@ -229,7 +241,7 @@ void loop() {
 
         // Move the carriage to limit switch to set it's home "zero" position and prepare for winding
         case ZEROING: {
-            // previousSate = currentState;
+            previousState = currentState;
 
             carriage.setSpeed(-800); // Slowly move to limit switch
             carriage.runSpeed();
@@ -240,16 +252,26 @@ void loop() {
 
                 // Temporarily set the carriage zero/home and move away from the limit switch a bit
                 carriage.setCurrentPosition(0);
-                carriage.moveTo(6600);
-                while (carriage.distanceToGo() != 0) {
-                    carriage.run();   
+                carriage.moveTo(1000);
+                while (carriage.distanceToGo() != 0) carriage.run();
+                carriage.setCurrentPosition(0);
+                carriageZeroed = true;
+                Serial.println("Carriage Zero Set");
+            }
+            if (carriageZeroed) {   // Move to the starting positions and start winding
+                
+                long offsetSteps = (long)(activeLayer->getOffset() * stepsPerMM);
+                carriage.moveTo(offsetSteps);
+                while (carriage.distanceToGo() != 0) carriage.run();
+                if (carriage.distanceToGo() == 0) offsetReached = true;
+                
+                if (offsetReached) {
+                    carriage.setCurrentPosition(0);           // Update carriage position to final zero/home position
+                    lastManStep = mandrel.currentPosition();  // Update mandrel postion to zero
+                    delay(2000);                              // Wait two seconds
+                    currentState = MOVING;                    // Initialize next state
+                    Serial.println("Zeroing Complete");       // Print zeroing confirmation to screen
                 }
-
-                carriage.setCurrentPosition(0);           // Update carriage position to final zero/home position
-                lastManStep = mandrel.currentPosition();  // Update mandrel postion to zero
-                delay(2000);                              // Wait two seconds
-                currentState = MOVING;                    // Initialize next state
-                Serial.println("Zeroing Complete");       // Print zeroing confirmation to screen
             }
             break;  // Exit Zeroing state
         }
@@ -325,7 +347,7 @@ void loop() {
 
         // Move on to the next layer or end the wind if there are none
         case FINISHED: {
-            // previousState = currentState;
+            previousState = currentState;
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {

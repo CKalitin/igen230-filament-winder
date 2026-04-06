@@ -385,7 +385,6 @@ void loop() {
 
                 // Reset system variables for the next layer
                 activeLayerIndex++;
-                carAccumulator = 0;
                 lastManStep = mandrel.currentPosition();
                 toolheadFlipDone = false;  
                 currentState = MOVING;
