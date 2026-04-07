@@ -155,7 +155,7 @@ long lastManStep;              // Stores previous loop's mandrel position
 long dwellTargetStep;          // Number of extra steps mandrel must move at end of a pass
 bool carriageZeroed  = false;  // Tracks if the carriage has zeroed
 bool offsetReached   = false;  // Tracks if carriage has reached its required offset
-bool done = false;             // Tracks if winding has finished
+bool done            = false;  // Tracks if winding has finished
 
 
 // Stepper Objects
@@ -190,11 +190,14 @@ void setup() {
     carriage.setAcceleration(6000);
 
     // Manually add a test layers (since UI isn't connected yet)
-    // Layer 1: Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(200.0, 7.0, 88.0, 20.0, 0.0, 90.0, 41.0);
+    // Layer 1: Parameters: length (mm), width(mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
+    LayerFromUI(100.0, 7.0, 70, 200.0, 0.0, 90.0, 41.0);
 
-    // Layer 2: Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(200.0, 7.0, 70.0, 20.0, 0.0, 90.0, 41.0);
+    // Layer 2: Parameters: length (mm), width(mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
+    LayerFromUI(100.0, 7.0, 45.0, 100.0, 0.0, 90.0, 41.0);
+
+    // Layer 3: Parameters: length (mm), width(mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
+    LayerFromUI(100.0, 7.0, 60.0, 150.0, 0.0, 90.0, 41.0);
     
     // Set global mandrel diameter (mm)
     manD = 41.0;
@@ -251,7 +254,7 @@ void loop() {
 
             previousState = currentState;
 
-            carriage.setSpeed(-800); // Slowly move to limit switch
+            carriage.setSpeed(-1200); // Slowly move to limit switch
             carriage.runSpeed();
 
             if (digitalRead(CARRIAGE_LIMIT) == HIGH) {   // Check if limit switch is active
@@ -260,21 +263,20 @@ void loop() {
 
                 // Temporarily set the carriage zero/home and move away from the limit switch a bit
                 carriage.setCurrentPosition(0);
-                carriage.moveTo(2000);
+                carriage.moveTo(1600);
                 while (carriage.distanceToGo() != 0) carriage.run();
                 carriage.setCurrentPosition(0);
                 carriageZeroed = true;
                 Serial.println("Carriage Zero Set");
             }
             if (carriageZeroed) {   // Move to the starting positions and start winding
-                
+                // Move to first layer offset
                 long offsetSteps = (long)(activeLayer->getOffset() * stepsPerMM);
                 carriage.moveTo(offsetSteps);
                 while (carriage.distanceToGo() != 0) carriage.run();
                 if (carriage.distanceToGo() == 0) offsetReached = true;
                 
                 if (offsetReached) {
-                    carriage.setCurrentPosition(0);           // Update carriage position to final zero/home position
                     lastManStep = mandrel.currentPosition();  // Update mandrel postion to zero
                     delay(2000);                              // Wait two seconds
                     currentState = MOVING;                    // Initialize next state
@@ -340,8 +342,7 @@ void loop() {
                 
                 // Increment Pass
                 activeLayer->countPass();
-                Serial.println(activeLayer->getPass());
-                Serial.println(activeLayer->getPassDone());
+                Serial.printf("Pass %d of %d completed\n", activeLayer->getPassDone(), activeLayer->getPass());
 
                 if (activeLayer->isDone()) {  // Check if layer is finished and update current state
                     currentState = FINISHED;
@@ -360,11 +361,15 @@ void loop() {
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
-                Serial.printf("Layer %d complete\n", activeLayerIndex);
-
                 // Reset system variables for the next layer
                 activeLayerIndex++;
+                Serial.printf("Layer %d complete\n", activeLayerIndex);
                 activeLayer = layers[activeLayerIndex];
+
+                // Move to next offset
+                long offsetSteps = (long)(activeLayer->getOffset() * stepsPerMM);
+                carriage.moveTo(offsetSteps);
+                while (carriage.distanceToGo() != 0) carriage.run();
                 lastManStep = mandrel.currentPosition();
                 currentState = MOVING;
             }

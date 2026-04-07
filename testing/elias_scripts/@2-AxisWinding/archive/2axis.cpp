@@ -20,6 +20,7 @@ class Layer{
     // Information not accessible outside the Layer class
     private:
         float _length;         // Length of the layer (mm)
+        float _width;          // Physical width of the fibre (mm)
         float _angle;          // Fibre angle for the layer (degrees)
         float _offset;         // Where the first pass starts on mandrel (mm)
         float _stepover;       // Distance moved per pass (to control fibre overlap in each layer) (mm)
@@ -33,24 +34,26 @@ class Layer{
     // Information accesible to the greater program
     public:
         // Tansfer repective parameters into private storage
-        Layer(float l, float a, float off, float stpo, float d, float manD)
-            : _length(l), _angle(a), _offset(off), _stepover(stpo), _dwell(d), _diameter(manD), _passDone(0), _goForward(true) { 
+        Layer(float l, float w, float a, float off, float stpo, float d, float manD)
+            : _length(l), _width(w), _angle(a), _offset(off), _stepover(stpo), _dwell(d), _diameter(manD), _passDone(0), _goForward(true) { 
                 float safeAngle = _angle;
                 if (safeAngle > 89.0) safeAngle = 89.9;    // Prevent divide by zero
                 if (safeAngle < 1.0) safeAngle = 1.0;      // Prevent divide by zero
                 float angleRad = radians(safeAngle);       // Convert to radians for calculations
 
                 float circ = PI * manD; // Calculate cicumference
-                float calcPasses = (_length * cos(angleRad)) / _stepover;  // Calculate passes needed for 100% coverage
-                _pass = ((int)ceil(calcPasses) * 2) + 1;
+                float calcPasses = (circ * cos(angleRad)) / _width;  // Calculate passes needed for 100% coverage
+                _pass = ((int)ceil(calcPasses)) * 2;
+                if (_pass % 2 != 0) _pass++;
             }
 
         // GETTERS: Read-only access
-        float getLength() const { return _length; }
-        float getAngle()  const { return _angle; }
-        float getOffset() const { return _offset; }
-        float getDwell()  const { return _dwell; }
-        int getPassDone() const { return _passDone; }
+        float getLength()   const { return _length;   }
+        float getAngle()    const { return _angle;    }
+        float getOffset()   const { return _offset;   }
+        float getDwell()    const { return _dwell;    }
+        int   getPass()     const { return _pass;     }
+        int   getPassDone() const { return _passDone; }
 
         // MATH: Calculates step Ratio for the layer
         float getStepRatio(float manD, float stepsPerMM, float stepsPerRev) const {
@@ -67,7 +70,7 @@ class Layer{
         float getStepoverDeg() const {
             float angleRad = radians(_angle);
             float circ = PI * _diameter;
-            return (_stepover * 360.0) / (circ * cos(angleRad)); // Shift needed to move the mandrel by the stepover distance
+            return ((_passDone + 1) * _stepover * 360.0) / (circ * cos(angleRad)); // Shift needed to move the mandrel by the stepover distance
         }
 
         // Tells the loop which coordinate (in mm) to stop at
@@ -113,10 +116,10 @@ int activeLayerIndex = 0;   // Layer currently winding
 Layer* layers[maxLayers];   // An array of pointers to Layer objects (chat gave me this idk how pointers work)
 
 // Stores layer data received from UI in the layer pointer array
-void LayerFromUI(float length, float angle, float offset, float stepover, float dwell, float diameter) {
+void LayerFromUI(float length, float width, float angle, float offset, float stepover, float dwell, float diameter) {
     
     if (totalLayers < maxLayers) {  // Make sure data can fit in the array
-        layers[totalLayers] = new Layer(length, angle, offset, stepover, dwell, diameter);  // Create a new layer object
+        layers[totalLayers] = new Layer(length, width, angle, offset, stepover, dwell, diameter);  // Create a new layer object
         totalLayers++;
     }
 }
@@ -152,6 +155,7 @@ long lastManStep;              // Stores previous loop's mandrel position
 long dwellTargetStep;          // Number of extra steps mandrel must move at end of a pass
 bool carriageZeroed  = false;  // Tracks if the carriage has zeroed
 bool offsetReached   = false;  // Tracks if carriage has reached its required offset
+bool done            = false;  // Tracks if winding has finished
 
 
 // Stepper Objects
@@ -185,19 +189,25 @@ void setup() {
     carriage.setMaxSpeed(5000);
     carriage.setAcceleration(6000);
 
-    // Manually add a test layer (since UI isn't connected yet)
-    // Parameters: length (mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
-    LayerFromUI(230.0, 60.0, 0.0, 3.0, 100.0, 55.0);
+    // Manually add a test layers (since UI isn't connected yet)
+    // Layer 1: Parameters: length (mm), width(mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
+    LayerFromUI(100.0, 7.0, 70, 200.0, 0.0, 90.0, 41.0);
+
+    // Layer 2: Parameters: length (mm), width(mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
+    LayerFromUI(100.0, 7.0, 45.0, 100.0, 0.0, 90.0, 41.0);
+
+    // Layer 3: Parameters: length (mm), width(mm), angle (deg), offset (mm), stepover (mm), dwell (deg), diameter (mm)
+    LayerFromUI(100.0, 7.0, 60.0, 150.0, 0.0, 90.0, 41.0);
     
     // Set global mandrel diameter (mm)
-    manD = 55.0;
+    manD = 41.0;
 
     // Enter Zeroing state on startup
     currentState = ZEROING;
 }
 
 void loop() {
-    
+
     if (totalLayers == 0) return;                   // If no layers exist, keep motors stopped
     Layer* activeLayer = layers[activeLayerIndex];  // Pointer to the current active layer
 
@@ -241,9 +251,10 @@ void loop() {
 
         // Move the carriage to limit switch to set it's home "zero" position and prepare for winding
         case ZEROING: {
+
             previousState = currentState;
 
-            carriage.setSpeed(-800); // Slowly move to limit switch
+            carriage.setSpeed(-1200); // Slowly move to limit switch
             carriage.runSpeed();
 
             if (digitalRead(CARRIAGE_LIMIT) == HIGH) {   // Check if limit switch is active
@@ -252,21 +263,20 @@ void loop() {
 
                 // Temporarily set the carriage zero/home and move away from the limit switch a bit
                 carriage.setCurrentPosition(0);
-                carriage.moveTo(1000);
+                carriage.moveTo(1600);
                 while (carriage.distanceToGo() != 0) carriage.run();
                 carriage.setCurrentPosition(0);
                 carriageZeroed = true;
                 Serial.println("Carriage Zero Set");
             }
             if (carriageZeroed) {   // Move to the starting positions and start winding
-                
+                // Move to first layer offset
                 long offsetSteps = (long)(activeLayer->getOffset() * stepsPerMM);
                 carriage.moveTo(offsetSteps);
                 while (carriage.distanceToGo() != 0) carriage.run();
                 if (carriage.distanceToGo() == 0) offsetReached = true;
                 
                 if (offsetReached) {
-                    carriage.setCurrentPosition(0);           // Update carriage position to final zero/home position
                     lastManStep = mandrel.currentPosition();  // Update mandrel postion to zero
                     delay(2000);                              // Wait two seconds
                     currentState = MOVING;                    // Initialize next state
@@ -278,11 +288,6 @@ void loop() {
 
         // Move the carriage and mandrel at speeds relative to the given winding angle
         case MOVING: {
-
-            //Increment pass
-             if (previousState == DWELLING) {
-                activeLayer->countPass();
-            }
 
             previousState = currentState;
 
@@ -334,6 +339,11 @@ void loop() {
             mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
 
             if (mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
+                
+                // Increment Pass
+                activeLayer->countPass();
+                Serial.printf("Pass %d of %d completed\n", activeLayer->getPassDone(), activeLayer->getPass());
+
                 if (activeLayer->isDone()) {  // Check if layer is finished and update current state
                     currentState = FINISHED;
                 }
@@ -351,19 +361,28 @@ void loop() {
 
             // Move on to the next layer in the array if there is one
             if (activeLayerIndex < totalLayers - 1) {
-                Serial.printf("Layer %d complete\n", activeLayerIndex);
-
                 // Reset system variables for the next layer
                 activeLayerIndex++;
+                Serial.printf("Layer %d complete\n", activeLayerIndex);
+                activeLayer = layers[activeLayerIndex];
+
+                // Move to next offset
+                long offsetSteps = (long)(activeLayer->getOffset() * stepsPerMM);
+                carriage.moveTo(offsetSteps);
+                while (carriage.distanceToGo() != 0) carriage.run();
                 lastManStep = mandrel.currentPosition();
+                currentState = MOVING;
             }
             else {
                 // All layers from the UI are done
                 mandrel.setSpeed(0);
                 carriage.setSpeed(0);
                 // Need to send a signal back to the UI
-
-                Serial.println("All layers complete. Winding over");
+                
+                if (done != true) {
+                    Serial.println("All layers complete. Winding over");
+                    done = true;
+                }
             }
             break;  // Exit Finished state
         }
