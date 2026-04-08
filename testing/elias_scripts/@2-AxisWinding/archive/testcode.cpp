@@ -109,6 +109,70 @@ class SplineProfile {
             return radius + _standoff;  // Return total required distance from mandrel surface (mm)
         }
 
+        // Get the derivative of the surface at a point
+        float getSlope(float x) const {
+            if (_n < 2) return 0.0;
+            
+            // Flat at the very ends
+            if (x <= _x[0] || x >= _x[_n - 1]) return 0.0;
+
+            int i = 0;
+            for (int j = 0; j < _n - 1; j++) {
+                if (x >= _x[j] && x <= _x[j + 1]) { 
+                    i = j; 
+                    break; 
+                }
+            }
+
+            float dx = x - _x[i];
+            // Return the derivative of the cubic segment
+            return (3.0 * _d[i] * dx * dx) + (2.0 * _c[i] * dx) + _b[i];
+        }
+
+        // Returns only the mandrel radius (y) at a given carriage position (x)
+        float getMandrelRadius(float x) const {
+            if (_n < 2) return 0.0; // Or a default radius if no points exist
+
+            // 1. Clamp to profile range to prevent errors
+            if (x <= _x[0])      return _y[0];
+            if (x >= _x[_n - 1]) return _y[_n - 1];
+
+            // 2. Find the segment
+            int i = 0;
+            for (int j = 0; j < _n - 1; j++) {
+                if (x >= _x[j] && x <= _x[j + 1]) { 
+                    i = j; 
+                    break; 
+                }
+            }
+
+            // 3. Compute cubic spline value
+            float dx = x - _x[i];
+            float radius = _a[i] + (_b[i] * dx) + (_c[i] * dx * dx) + (_d[i] * dx * dx * dx);
+            
+            return (radius < 0.0) ? 0.0 : radius; 
+        }
+
+        // Returns the maximum radius of the mandrel between startX and endX
+        float getMaxRadius(float startX, float endX) const {
+            if (_n < 2) return 0.0;
+
+            float maxR = 0.0;
+            
+            // 1. Check all defined points that fall within the range [startX, endX]
+            for (int i = 0; i < _n; i++) {
+                if (_x[i] >= startX && _x[i] <= endX) {
+                    if (_y[i] > maxR) maxR = _y[i];
+                }
+            }
+
+            // 2. Optional: If you need extreme precision on a complex curve,
+            // you would solve the derivative (getSlope) for zero to find local maxima.
+            // For a standard cylinder/hemisphere, checking points is usually enough.
+            
+            return maxR;
+        }
+       
         bool isReady() const { return _n >= 2; }
 };
 
@@ -176,10 +240,10 @@ class Layer{
 
         // Returns the toolhead position in steps for a given direction
         // Forward pass: fiber feeds at angle, reverse pass: fiber feeds at
-        long getToolheadTarget(bool goingForward, float stepsPerRev) const {
-            float toolheadAngle = (_angle);                                 // Toolhead angle based on winding angle
+        float getToolheadTarget(bool goingForward, float stepsPerRev) const {
+            float toolheadAngle = (90 - (float)_angle);                                 // Toolhead angle based on winding angle
             toolheadAngle = goingForward ? toolheadAngle : -toolheadAngle;  // Flip sign on direction change
-            return (long)((toolheadAngle / 360.0) * stepsPerRev);
+            return ((toolheadAngle / 360.0) * stepsPerRev);
         }
 
         // Lets the loop know which way the carriage is moving
@@ -226,10 +290,11 @@ const int toolheadTeeth = 60;   // Number of pulley teeth on toolhead pulley
 const int toolarmPitch  = 3;    // mm per revolution
 const int toolarmZero   = 115;  // Physical distance from mandrel axis to the toolarm at position 0 (mm)
 
-const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                   // Carriage steps per mm moved
-const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);       // Required carriage steps per mandrel step
-const float toolheadStepsPerRev = (motorSteps * microsteps) * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
-const float toolarmStepsPerMM   = (motorSteps * microsteps / 2) / toolarmPitch;                         // Toolarm steps per mm
+const float stepsPerMM          = (motorSteps * microsteps) / (carTeeth * Pitch);                       // Carriage steps per mm moved
+const float stepsPerRev         = (motorSteps * microsteps) * ((float)manTeeth / motorTeeth);           // Required carriage steps per mandrel step
+const float toolheadStepsPerRev = (motorSteps * microsteps / 2) * ((float)toolheadTeeth / motorTeeth);  // Steps for one full toolhead rotation
+const float toolarmStepsPerMM   = (motorSteps * microsteps) / toolarmPitch;                             // Toolarm steps per mm
+const float toolheadClearance   = 40.0;   // Required distance from the mandrel for the toolhead not to hit during rotation
 
 // Winding Parameters (from UI)
 float manD;   // Mandrel Diameter (mm)
@@ -243,7 +308,7 @@ bool toolheadZeroed  = false;  // Tracks if the toolhead has zeroed
 bool toolarmZeroed   = false;  // Tracks if the toolarm has zeroed
 
 // Stepper Objects
-AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
+AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates an object called mandrel to store current step position, target position, speed, and timing
 AccelStepper carriage(AccelStepper::DRIVER, CARRIAGE_STEP, CARRIAGE_DIR);  // Same as above but for the carriage
 AccelStepper toolhead(AccelStepper::DRIVER, TOOLHEAD_STEP, TOOLHEAD_DIR);  // Same but for the toolhead
 AccelStepper toolarm(AccelStepper::DRIVER, TOOLARM_STEP, TOOLARM_DIR);     // Same but for toolarm
@@ -281,51 +346,39 @@ void setup() {
     digitalWrite(TOOLARM_DIR, LOW);
 
     // Set speeds and accelerations
-    mandrel.setMaxSpeed(2000);
-    mandrel.setSpeed(1000);
-    carriage.setMaxSpeed(2000);
+    mandrel.setMaxSpeed(5000);
+    mandrel.setSpeed(2000);
+    carriage.setMaxSpeed(5000);
     carriage.setAcceleration(5000);
     carriage.setSpeed(1000);
     toolhead.setMaxSpeed(8000);
     toolhead.setAcceleration(10000);
     toolarm.setMaxSpeed(8000);
-    toolarm.setAcceleration(8000);
+    toolarm.setAcceleration(10000);
 
     // Layer(length, width, angle, offset, stepover, dwell, diameter)
-    layers[0] = new Layer(509, 5.0, 30, 0, 0.0, 180, 79.0);
-    
-    // Tell the program there is 1 layer to process
+   
+    toolarmProfile.addPoint(0.0,   80.0);   // x:0,   d:160
+    toolarmProfile.addPoint(90.0,  77.5);   // x:90,  d:155
+    toolarmProfile.addPoint(180.0, 71.5);   // x:180, d:143
+    toolarmProfile.addPoint(267.0, 56.5);   // x:267, d:113
+    toolarmProfile.addPoint(325.0, 14.0);   // x:325, d:28 (Narrow neck)
+    toolarmProfile.addPoint(410.0, 25.0);   // x:410, d:50 (Flare)
+
+    // Recommended standoff for this size
+    toolarmProfile.setStandoff(25.0); 
+
+    // Compute the spline curve
+    toolarmProfile.compute();
+
+    // Setup the layer for the full 410mm length
+    // Layer(length, width, angle, offset, stepover, dwell, diameter)
+    // We use the average/max diameter for the coverage calculation
+    layers[0] = new Layer(410, 5.0, 45, 0, 1.0, 360, 160.0);
     totalLayers = 1;
 
-    manD = 79.0;
-
-    // Define mandrel profile — cylinder with hemispherical ends
-    // Total length: 150mm (34.5mm dome + 100mm cylinder + 34.5mm dome)
-    // Radius: 50mm throughout, hemisphere described by r(x) = sqrt(R^2 - (R-x)^2)
-    float R = manD / 2.0;  // Hemisphere radius = cylinder radius for tangent transition
-
-    // Left hemisphere (using 10 points)
-    for (int i = 0; i <= 10; i++) {
-        float x = (R / 10.0) * i;
-        float y = sqrt(R * R - (R - x) * (R - x));
-        toolarmProfile.addPoint(x, y);
-    }
-
-    // Cylinder section (using 2 points)
-    //toolarmProfile.addPoint(R,  R);   // just inside cylinder start
-    toolarmProfile.addPoint(R + 215.0, R);   // mid cylinder
-    toolarmProfile.addPoint(R + 400.0, R);   // cylinder end
-
-    // Right hemisphere (using 10 points)
-    for (int i = 1; i <= 10; i++) {
-        float x = R + 430.0 + (R / 10.0) * i;
-        float t = (R / 10.0) * i;          // distance from cylinder end
-        float y = sqrt(R * R - t * t);         // same formula as left dome
-        toolarmProfile.addPoint(x, y);
-    }
-
-    toolarmProfile.setStandoff(55.0);  
-    toolarmProfile.compute();
+    // Set global manD to your largest diameter for safety logic
+    manD = 160.0;
 
     // Enter Zeroing state on startup
     delay(1000);
@@ -393,7 +446,7 @@ void loop() {
                 if (digitalRead(CARRIAGE_LIMIT) == HIGH) {
                     carriage.stop();
                     carriage.setCurrentPosition(0);
-                    carriage.moveTo(1200);
+                    carriage.moveTo(200);
                     while (carriage.distanceToGo() != 0) carriage.run();
                     carriage.setCurrentPosition(0);
                     carriageZeroed = true;
@@ -420,6 +473,11 @@ void loop() {
                 long offsetSteps = (long)(activeLayer->getOffset() * stepsPerMM);
                 carriage.moveTo(offsetSteps);
                 while (carriage.distanceToGo() != 0) carriage.run();
+
+                // Move to first toolhead angle
+                long firstTarget = activeLayer->getToolheadTarget(true, toolheadStepsPerRev);
+                toolhead.moveTo(firstTarget);
+                while (toolhead.distanceToGo() != 0) { toolhead.run(); }
                 
                 // Move to first toolarm standoff
                 float firstArmTarget = toolarmProfile.getToolarmTarget(0.0);
@@ -427,11 +485,6 @@ void loop() {
                 if (firstTravel < 0.0) firstTravel = 0.0;
                 toolarm.moveTo((long)(firstTravel * toolarmStepsPerMM));
                 while (toolarm.distanceToGo() != 0) toolarm.run();
-
-                // Move to first toolhead angle
-                long firstTarget = activeLayer->getToolheadTarget(true, toolheadStepsPerRev);
-                toolhead.moveTo(firstTarget);
-                while (toolhead.distanceToGo() != 0) { toolhead.run(); }
 
                 lastManStep = mandrel.currentPosition();  // Update mandrel postion to zero
                 currentState = MOVING;                    // Initialize next state
@@ -446,43 +499,46 @@ void loop() {
 
             previousState = currentState;
 
-            // Get needed information from the Layer class
-            float currentPosMM = carriage.currentPosition() / stepsPerMM;             // Convert position in steps to mm
+            // Calculate toolarm target
+            float currentPosMM = carriage.currentPosition() / stepsPerMM;   // Convert carriage position in steps to mm
+            float surfaceSlope = toolarmProfile.getSlope(currentPosMM); // Calculate the slope of the surface at this exact point
+            float surfaceAngleDeg = degrees(atan(surfaceSlope));        // Convert slope to degrees (atan returns radians so convert to deg)
+        
             float ratio = activeLayer->getStepRatio(manD, stepsPerMM, stepsPerRev);   // Get step ratio
-            float target = activeLayer->getTargetEndpoint();                          // Get end point for layer
             float moveSign = activeLayer->isGoingForward() ? 1.0 : -1.0;              // Direction of carriage motion
-            const float maxCarriageSteps = 4000.0;                                    // Safe carriage step limit
+
+            // How many toolarm steps per carriage step? 
+            // (Vertical change / Horizontal change) * step conversion
+            float toolarmRatio = ratio * surfaceSlope * (toolarmStepsPerMM / stepsPerMM);
+
+            // Dynamic Speed Capping
+            // limit = MaxSpeed / needed_ratio
+            float limitFromCarriage = 5000.0f / (abs(ratio) + 0.001f); 
+            float limitFromToolarm = 8000.0f / (abs(toolarmRatio) + 0.001f);
 
             // Scale mandrel speed down if carriage would exceed limit
-            float safeMandelSpeed = min(1000.0f, maxCarriageSteps / ratio);
-            mandrel.setSpeed(safeMandelSpeed);
+            float safeMandrelSpeed = min({5000.0f, limitFromCarriage, limitFromToolarm});
+            mandrel.setSpeed(safeMandrelSpeed);
 
             // Set carriage speed proportional to mandrel speed
-            float carriageSpeed = safeMandelSpeed * ratio * moveSign;
+            float carriageSpeed = safeMandrelSpeed * ratio * moveSign;
             carriage.setSpeed(carriageSpeed);
+                        
+            toolarm.setSpeed(-safeMandrelSpeed * toolarmRatio * moveSign);
             
-            // Run both motors
+            // Run motors
             mandrel.runSpeed();
             carriage.runSpeed();
+            toolarm.runSpeed();
 
-            // Calculate toolarm target
-            float toolarmTarget = toolarmProfile.getToolarmTarget(currentPosMM);
-            float travel = toolarmZero - toolarmTarget;
-            if (travel < 0.0) travel = 0.0;
-            long toolarmStepTarget = (long)(travel * toolarmStepsPerMM);
-            toolarm.moveTo(toolarmStepTarget);
-            toolarm.run();
-
+            float target = activeLayer->getTargetEndpoint(); // Get end point for pass
 
             // Enter Dwell state if the carriage has reached the end of a pass
-            if (activeLayer->isGoingForward() && currentPosMM >= target && toolarm.distanceToGo() == 0) currentState = DWELLING;  
-            if (!activeLayer->isGoingForward() && currentPosMM <= target && toolarm.distanceToGo() == 0) currentState = DWELLING;
+            if (activeLayer->isGoingForward() && currentPosMM >= target) currentState = DWELLING;  
+            if (!activeLayer->isGoingForward() && currentPosMM <= target) currentState = DWELLING;
 
             // Prepare Dwell if direction just switched
             if (currentState == DWELLING) {
-
-                toolarm.stop();
-                toolarm.setCurrentPosition(toolarm.currentPosition());
 
                 // Calculate total needed rotation
                 float totalDeg = activeLayer->getDwell() + activeLayer->getStepoverDeg();   // Total mandrel rotation needed
@@ -494,26 +550,36 @@ void loop() {
 
         // Spin the mandrel to align the fiber for the next pass, no carriage motion
         case DWELLING: {
+
             previousState = currentState;
 
-            // Cancel any queued carriage motion
-            carriage.stop();                                         
-            carriage.setCurrentPosition(carriage.currentPosition());
+            carriage.stop();                                            // Cancel any queued carriage motion                         
+            carriage.setCurrentPosition(carriage.currentPosition());    // Update Position
+            mandrel.runSpeed();                                         // Rotate mandrel at prior defined constant speed
 
-            mandrel.runSpeed(); // Rotate mandrel at prior defined constant speed
+            float currentPosMM = carriage.currentPosition() / stepsPerMM;    
+            float travel = (float)toolarm.currentPosition() / toolarmStepsPerMM;  
+            float toolarmDistance = toolarmZero - travel;
 
-            if (!toolheadFlipped) {
-                // Move the toolhead to its new target position
-                bool nextDirection = !activeLayer->isGoingForward();    // Get new direction by flipping the sign
-                long toolheadTarget = activeLayer->getToolheadTarget(nextDirection, toolheadStepsPerRev); 
-                toolhead.moveTo(toolheadTarget);    
-                while (toolhead.distanceToGo() != 0) toolhead.run();
-
-                if (toolhead.distanceToGo() == 0) {
-                    toolheadFlipped = true;  // Toolhead is in position
-                }
+            if (toolarmProfile.getMaxRadius(currentPosMM, toolheadClearance) >= (toolarmDistance + 5)) {
+                toolarm.moveTo(toolarmZero - toolarmProfile.getMaxRadius(currentPosMM, toolheadClearance));
+                while (toolarm.distanceToGo() != 0) toolarm.run();
             }
-            if (toolheadFlipped && mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
+
+            if (mandrel.currentPosition() >= dwellTargetStep) {     // Check if current position has reached end of dwell
+
+                if (!toolheadFlipped) {
+                    
+                    // Move the toolhead to its new target position
+                    bool nextDirection = !activeLayer->isGoingForward();    // Get new direction by flipping the sign
+                    long toolheadTarget = activeLayer->getToolheadTarget(nextDirection, toolheadStepsPerRev); 
+                    toolhead.moveTo(toolheadTarget);    
+                    while (toolhead.distanceToGo() != 0) toolhead.run();
+
+                    if (toolhead.distanceToGo() == 0) {
+                        toolheadFlipped = true;  // Toolhead is in position
+                    }
+                }
                 
                 // Increment Pass
                 activeLayer->countPass();

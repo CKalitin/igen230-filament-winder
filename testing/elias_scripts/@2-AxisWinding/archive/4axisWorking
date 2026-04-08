@@ -5,7 +5,7 @@
 // Carriage pins (Motor 1 on PCB)
 #define CARRIAGE_DIR   17
 #define CARRIAGE_STEP  16
-#define CARRIAGE_EN     5
+#define CARRIAGE_EN    5
 #define CARRIAGE_LIMIT 35   // Limit switch 1 (on PCB)
 
 // Mandrel pins (Motor 2 on PCB)
