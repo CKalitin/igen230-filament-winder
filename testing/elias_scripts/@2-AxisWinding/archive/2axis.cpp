@@ -263,7 +263,7 @@ void loop() {
 
                 // Temporarily set the carriage zero/home and move away from the limit switch a bit
                 carriage.setCurrentPosition(0);
-                carriage.moveTo(1600);
+                carriage.moveTo(1200);
                 while (carriage.distanceToGo() != 0) carriage.run();
                 carriage.setCurrentPosition(0);
                 carriageZeroed = true;
