@@ -155,8 +155,7 @@ long lastManStep;              // Stores previous loop's mandrel position
 long dwellTargetStep;          // Number of extra steps mandrel must move at end of a pass
 bool carriageZeroed  = false;  // Tracks if the carriage has zeroed
 bool offsetReached   = false;  // Tracks if carriage has reached its required offset
-bool done            = false;  // Tracks if winding has finished
-
+bool windingOver     = false;  // Tracks if the wind has finished
 
 // Stepper Objects
 AccelStepper mandrel(AccelStepper::DRIVER, MANDREL_STEP, MANDREL_DIR);     // Creates object called mandrel to store current step position, target position, speed, timing
@@ -211,7 +210,7 @@ void loop() {
     if (totalLayers == 0) return;                   // If no layers exist, keep motors stopped
     Layer* activeLayer = layers[activeLayerIndex];  // Pointer to the current active layer
 
-        // Emergency shut off logic
+    // Emergency shut off logic
     if (digitalRead(E_STOP) == HIGH) {
         if (currentState != PAUSED) {
             previousState = currentState;  // Save state before pausing
@@ -299,11 +298,11 @@ void loop() {
             const float maxCarriageSteps = 4000.0;  // Safe carriage step limit
 
             // Scale mandrel speed down if carriage would exceed limit
-            float safeMandelSpeed = min(1000.0f, maxCarriageSteps / ratio);
-            mandrel.setSpeed(safeMandelSpeed);
+            float safeMandrelSpeed = min(1000.0f, maxCarriageSteps / ratio);
+            mandrel.setSpeed(safeMandrelSpeed);
 
             // Set carriage speed proportional to mandrel speed
-            float carriageSpeed = safeMandelSpeed * ratio * moveSign;
+            float carriageSpeed = safeMandrelSpeed * ratio * moveSign;
             carriage.setSpeed(carriageSpeed);
             
             // Run both motors
@@ -379,9 +378,9 @@ void loop() {
                 carriage.setSpeed(0);
                 // Need to send a signal back to the UI
                 
-                if (done != true) {
+                if (windingOver != true) {
                     Serial.println("All layers complete. Winding over");
-                    done = true;
+                    windingOver = true;
                 }
             }
             break;  // Exit Finished state
